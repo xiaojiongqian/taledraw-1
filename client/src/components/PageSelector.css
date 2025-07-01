@@ -1,0 +1,157 @@
+.page-selector {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 4px 0;
+  transition: all 0.3s ease;
+}
+
+.page-selector:hover {
+  border-color: #007bff;
+}
+
+.page-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.page-selector-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.page-count-display {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.page-count-input {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 600;
+  color: #007bff;
+  width: 40px;
+  text-align: center;
+  outline: none;
+}
+
+.page-count-input:disabled {
+  color: #6c757d;
+}
+
+.page-unit {
+  font-size: 12px;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.page-slider-container {
+  margin: 4px 0 0 0;
+}
+
+.page-slider {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: #dee2e6;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.page-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #007bff;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.page-slider::-webkit-slider-thumb:hover {
+  background: #0056b3;
+}
+
+.page-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #007bff;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.page-slider::-moz-range-thumb:hover {
+  background: #0056b3;
+}
+
+.page-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.page-slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+  background: #6c757d;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6c757d;
+}
+
+.page-info {
+  background: #e7f3ff;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 8px;
+}
+
+.page-description {
+  font-size: 12px;
+  color: #0056b3;
+  text-align: center;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .page-selector {
+    padding: 10px;
+    margin: 6px 0;
+  }
+  
+  .page-selector-header {
+    margin-bottom: 8px;
+  }
+  
+  .page-selector-label {
+    font-size: 13px;
+  }
+  
+  .page-count-input {
+    font-size: 15px;
+    width: 38px;
+  }
+  
+  .slider-labels {
+    font-size: 10px;
+  }
+} 

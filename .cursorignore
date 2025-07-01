@@ -1,0 +1,40 @@
+# Cursor ignore file
+# 这个文件控制Cursor编辑器中哪些文件/目录应该被忽略
+
+# Node modules
+node_modules/
+*/node_modules/
+
+# Build outputs
+build/
+dist/
+*.build/
+
+# Logs
+*.log
+logs/
+
+# Cache directories
+.cache/
+.parcel-cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# 注意：我们明确不忽略.env文件
+# 如果你想忽略.env，取消下面这行的注释
+# .env
+# .env.local
+# .env.development.local
+# .env.test.local
+# .env.production.local 

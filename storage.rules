@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Firebase Storage 安全规则
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 允许所有人读取tale-images目录下的图像
+    match /tale-images/{allPaths=**} {
+      allow read: if true;
+    }
+    
+    // 只允许认证用户写入自己的目录
+    match /tale-images/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // 其他路径默认拒绝访问
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+} 
