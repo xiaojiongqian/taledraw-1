@@ -67,7 +67,7 @@ const PageItem = ({
     <div className={`page-item ${page.status || 'unknown'}`}>
       <div className="page-header">
         <div className="page-number">
-          {page.title ? `第 ${index + 1} 页: ${page.title}` : `第 ${index + 1} 页`}
+          {page.title ? `${index + 1}. ${page.title}` : `${index + 1}.`}
         </div>
         <div className="page-status">
           <span className={`status-badge ${page.status || 'unknown'}`}>
@@ -108,7 +108,7 @@ const PageItem = ({
             <div className="image-container">
               <img 
                 src={page.image} 
-                alt={`第 ${index + 1} 页插图`}
+                alt={`${index + 1}. 插图`}
                 onError={(e) => {
                   console.error('Image load failed:', e.target.src);
                 }}
@@ -164,11 +164,16 @@ const PageItem = ({
             <div className="prompt-content">
               {isEditingPrompt ? (
                 <div className="prompt-editor">
+                  <div className="safety-tips">
+                    <small style={{color: '#666', marginBottom: '8px', display: 'block'}}>
+                      💡 <strong>安全提示</strong>：为提高生成成功率，请使用友善、积极的词汇描述场景。避免暴力、恐怖或争议性内容，系统会自动优化您的提示词。
+                    </small>
+                  </div>
                   <textarea
                     value={editedPrompt}
                     onChange={(e) => setEditedPrompt(e.target.value)}
                     rows={4}
-                    placeholder="输入图像生成提示词..."
+                    placeholder="输入图像生成提示词，例如：'可爱的小猫在花园里快乐地玩耍'。系统将自动添加绘本风格和角色一致性要求。"
                     className="prompt-textarea"
                   />
                   <div className="editor-actions">

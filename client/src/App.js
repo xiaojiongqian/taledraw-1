@@ -284,33 +284,59 @@ function App() {
       let finalPrompt = userPrompt;
       
       if (isUserCustomPrompt) {
-        // 用户自定义提示词 - 应用角色一致性增强
+        // 用户自定义提示词 - 应用内容安全优化和角色一致性增强
         const { sceneCharacters = [], sceneType = '主角场景', mainCharacter = '', characterType = '' } = currentPage;
         const artStyle = '儿童绘本插画风格';
         
         console.log(`User custom prompt detected for page ${pageIndex + 1}: "${userPrompt}"`);
         console.log(`Applying character consistency - Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
         
-        // 应用与原有系统相同的角色一致性逻辑
+        // 应用内容安全转换，确保用户输入的提示词安全友善
+        const safetyReplacements = {
+          // 暴力相关词汇转换
+          '打架': '玩耍', '战斗': '友好竞赛', '愤怒': '专注', '凶恶': '认真',
+          '打斗': '互动', '攻击': '接近', '武器': '工具', '刀': '魔法棒', '剑': '勇士棒',
+          // 恐怖元素转换
+          '可怕': '神秘', '恐怖': '有趣', '吓人': '令人好奇', '鬼': '精灵', '怪物': '奇幻生物',
+          // 负面情绪转换
+          '邪恶': '调皮', '坏': '淘气', '狡猾': '聪明', '阴险': '机智', '仇恨': '误解',
+          // 危险行为转换
+          '危险': '冒险', '伤害': '帮助', '破坏': '改造', '毁灭': '改变'
+        };
+        
+        // 对用户提示词应用安全转换
+        let safeUserPrompt = userPrompt;
+        Object.entries(safetyReplacements).forEach(([unsafe, safe]) => {
+          const regex = new RegExp(unsafe, 'gi');
+          safeUserPrompt = safeUserPrompt.replace(regex, safe);
+        });
+        
+        // 如果提示词被修改，记录日志
+        if (safeUserPrompt !== userPrompt) {
+          console.log(`Applied safety transformations to user prompt: "${userPrompt}" -> "${safeUserPrompt}"`);
+          addLog(`为提高生成成功率，已优化用户提示词中的部分词汇`, 'info');
+        }
+        
+        // 应用与原有系统相同的角色一致性逻辑，使用安全转换后的提示词
         if (sceneType === '无角色场景') {
-          finalPrompt = `${userPrompt}. Focus on the scene and environment only, no characters should appear. ${artStyle}.`;
+          finalPrompt = `${safeUserPrompt}. Focus on the scene and environment only, no characters should appear. ${artStyle}.`;
         } else if (sceneType === '主角场景' && sceneCharacters.includes(mainCharacter?.split(' ')[0])) {
           // 主角场景 - 应用主角一致性
           if (pageIndex > 0) {
-            finalPrompt = `${userPrompt}. IMPORTANT: Show the main character - ${mainCharacter}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
+            finalPrompt = `${safeUserPrompt}. IMPORTANT: Show the main character - ${mainCharacter}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
           } else {
-            finalPrompt = `${userPrompt}. Establish clear character design for the main character - ${mainCharacter}. ${artStyle}. This sets the visual foundation for the story.`;
+            finalPrompt = `${safeUserPrompt}. Establish clear character design for the main character - ${mainCharacter}. ${artStyle}. This sets the visual foundation for the story.`;
           }
         } else if (sceneType === '配角场景' || sceneType === '群体场景') {
           // 配角场景 - 只显示指定的配角，排除主角
           if (sceneCharacters.length > 0) {
-            finalPrompt = `${userPrompt}. Show only these characters: ${sceneCharacters.join(', ')}. Do NOT show the main character (${mainCharacter}) in this scene. ${artStyle}.`;
+            finalPrompt = `${safeUserPrompt}. Show only these characters: ${sceneCharacters.join(', ')}. Do NOT show the main character (${mainCharacter}) in this scene. ${artStyle}.`;
           } else {
-            finalPrompt = `${userPrompt}. Focus on the scene with the mentioned characters. Do NOT include the main character in this specific scene. ${artStyle}.`;
+            finalPrompt = `${safeUserPrompt}. Focus on the scene with the mentioned characters. Do NOT include the main character in this specific scene. ${artStyle}.`;
           }
         } else {
           // 备用方案 - 添加基础绘本风格
-          finalPrompt = `${userPrompt}. ${artStyle}.`;
+          finalPrompt = `${safeUserPrompt}. ${artStyle}.`;
         }
         
         // 根据宽高比优化构图描述
@@ -319,6 +345,9 @@ function App() {
         } else if (aspectRatio === '16:9') {
           finalPrompt += ' Horizontal composition, landscape orientation, wide scene with good use of space.';
         }
+        
+        // 添加安全友善的氛围描述
+        finalPrompt += ' Safe and welcoming atmosphere, friendly expressions, suitable for children.';
       }
 
       // 调用图像生成API

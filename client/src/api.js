@@ -314,8 +314,11 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
     // 首先创建基础的页面结构，这样可以立即显示文字内容
     const pagesWithImages = storyPages.map((page, index) => ({
       text: page.text,
+      title: page.title, // ✅ 添加缺失的title字段
       image: null, // 图片待生成
       imagePrompt: page.imagePrompt,
+      sceneType: page.sceneType, // ✅ 添加场景类型
+      sceneCharacters: page.sceneCharacters || [], // ✅ 添加场景角色
       isPlaceholder: false,
       status: 'generating' // 标记为生成中
     }));
@@ -400,6 +403,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         // 图像生成成功
         const pageData = {
           text: page.text,
+          title: page.title, // ✅ 添加缺失的title字段
           image: imageUrl,
           imagePrompt: page.imagePrompt,
           sceneType: page.sceneType || '主角场景',
@@ -423,6 +427,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         // 生成失败时不提供占位符图像，而是保持错误状态
         pagesWithImages[index] = {
           text: page.text,
+          title: page.title, // ✅ 添加缺失的title字段
           image: null, // 不提供占位符图像
           imagePrompt: page.imagePrompt,
           sceneType: page.sceneType || '主角场景',
@@ -534,8 +539,27 @@ export async function generateCharacterAvatar(characterName, characterDescriptio
       throw new Error('Character name and description cannot be empty');
     }
 
-    // 构建角色形象的提示词，严格遵循角色描述
-    let characterPrompt = `Character portrait: ${characterName}. ${characterDescription}. Children's book illustration style, PNG with transparent background, no background elements.`;
+    // 构建角色形象的提示词，严格遵循角色描述，并应用内容安全优化
+    let safeCharacterDescription = characterDescription;
+    
+    // 应用内容安全转换，确保描述友善且适合儿童绘本
+    const safetyReplacements = {
+      // 暴力相关词汇转换
+      '打架': '玩耍', '战斗': '竞赛', '愤怒': '专注', '凶恶': '认真',
+      '可怕': '神秘', '恐怖': '有趣', '吓人': '令人好奇',
+      // 负面情绪转换
+      '邪恶': '调皮', '坏': '淘气', '狡猾': '聪明', '阴险': '机智',
+      // 危险行为转换
+      '危险': '冒险', '武器': '工具', '刀': '魔法棒', '剑': '勇士棒'
+    };
+    
+    // 应用安全词汇替换
+    Object.entries(safetyReplacements).forEach(([unsafe, safe]) => {
+      const regex = new RegExp(unsafe, 'gi');
+      safeCharacterDescription = safeCharacterDescription.replace(regex, safe);
+    });
+    
+    let characterPrompt = `Character portrait: ${characterName}. ${safeCharacterDescription}. Friendly and warm expression, suitable for children's book illustration style, PNG with transparent background, no background elements, safe and welcoming appearance.`;
 
     // 添加负向提示（用户自定义或默认，包含文字排除）
     const defaultNegativePrompt = [

@@ -537,6 +537,15 @@ exports.generateStoryPages = onCall(async (request) => {
 - 图像中绝对不能包含任何文字、标识、符号等
 - 保持儿童绘本的温馨画风
 
+**内容安全指导：**
+在生成图像提示词时，如果原故事包含以下内容，请用中性、善意的词汇重新描述：
+1. **暴力场景**：将打斗、冲突描述为"角色间的友好竞赛"或"解决分歧的讨论"
+2. **恐怖元素**：将可怕的场景转化为"神秘的探险"或"有趣的挑战"
+3. **种族/文化差异**：强调多样性的美好，避免刻板印象，用包容性语言描述
+4. **负面情绪**：将愤怒、仇恨转化为"困惑"、"需要帮助"等更温和的表达
+5. **危险行为**：将冒险活动描述为"安全的探索"或"在成人监护下的活动"
+目标是保持故事本意的同时，确保图像生成服务能够成功处理提示词。
+
 **原故事内容：**
 ${storyText}
 
@@ -587,7 +596,7 @@ ${storyText}
       "sceneCharacters": ["此页面应该出现的角色名称"],
       "sceneType": "主角场景|配角场景|群体场景|无角色场景",
       "keyPlotPoint": "本页承载的关键情节",
-      "imagePrompt": "详细的英文图像生成提示词，明确指出应该出现的角色外观，并排除其他角色，以', children's book illustration style, warm colors, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'结尾"
+      "imagePrompt": "详细的英文图像生成提示词，明确指出应该出现的角色外观，并排除其他角色。**重要**：如果原情节包含争议内容，必须用中性、友善的词汇重新描述，避免暴力、恐怖、歧视等可能被图像生成服务拒绝的词汇，同时保持故事本意。以', children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'结尾"
     }
   ]
 }
@@ -730,6 +739,14 @@ ${story.trim()}
 3. 确保描述足够详细以保持视觉一致性
 4. 使用与故事相同的语言回复
 5. **重要：角色应该适合儿童绘本**
+
+**内容安全指导：**
+在描述角色外观时，请确保：
+- 避免任何可能被认为是刻板印象的特征描述
+- 如果原故事中角色有负面特征，转化为中性或正面的外观描述
+- 强调友善、温和的面部表情和身体语言
+- 服装和配饰应该适合儿童观看，避免过于复杂或可能引起争议的元素
+- 确保描述包容性强，适合多元化的读者群体
 
 请返回JSON格式：
 {

@@ -13,6 +13,28 @@ note:
 1.The drawing should be in the same style of each page.
 2.The role will have a name, so that it can keep the same looking due to the content.
 3.We can use the role's picture for imagen model reference, to gen the role's correct looking.
+4.Content safety optimization to ensure high generation success rate and child-friendly content.
+
+## Content Safety Requirements:
+
+### 1. Multi-layer Safety Protection
+- **LLM Level**: Gemini automatically converts controversial content to friendly descriptions
+- **Frontend Level**: Real-time safety word replacement for user inputs  
+- **Image Generation Level**: Automatic addition of safe and welcoming atmosphere descriptions
+- **User Interface Level**: Safety tips and guidelines for content creation
+
+### 2. Safety Transformations
+- Violence → Friendly competition or discussion
+- Horror elements → Mysterious adventures or interesting challenges
+- Negative emotions → Confusion or need for help
+- Dangerous activities → Safe exploration under supervision
+- Stereotypes → Inclusive and diverse descriptions
+
+### 3. Child-Friendly Optimization
+- All generated content suitable for children's books
+- Friendly expressions and warm colors emphasized
+- Safe and welcoming atmosphere in all images
+- Inclusive character descriptions avoiding stereotypes
 
 implement detail:
 1.Only use react app, no need server.

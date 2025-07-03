@@ -183,6 +183,63 @@ exports.generateImage = onCall({
 - ✅ 错误处理和日志记录
 - ✅ 超时和资源限制
 
+### 内容安全配置
+
+#### 自动内容过滤
+部署后的系统包含多层内容安全机制：
+
+1. **LLM级别安全指导**
+   ```javascript
+   // functions/index.js 中已配置的安全指导
+   // 自动将争议内容转换为儿童友好描述
+   ```
+
+2. **前端实时过滤**
+   ```javascript
+   // 配置了安全词汇映射系统
+   // 实时转换用户输入的争议性词汇
+   ```
+
+3. **图像生成安全增强**
+   ```javascript
+   // 自动添加安全友善的氛围描述
+   // 确保生成内容符合Imagen内容政策
+   ```
+
+#### 部署验证清单
+
+部署完成后，验证以下内容安全功能：
+
+- [ ] 故事分页API正确应用安全转换
+- [ ] 角色提取API生成包容性描述
+- [ ] 用户界面显示安全提示
+- [ ] 提示词编辑器包含安全指导
+- [ ] 图像生成自动添加友善氛围描述
+- [ ] 系统能正确转换争议性词汇
+
+#### 内容安全监控
+
+```bash
+# 查看内容安全相关日志
+firebase functions:log | grep "safety\|安全\|转换"
+
+# 监控图像生成成功率
+firebase functions:log --only generateImage | grep "success\|failed"
+```
+
+#### 配置验证
+
+验证内容安全配置是否正确部署：
+
+```bash
+# 测试安全词汇转换
+curl -X POST https://your-region-your-project.cloudfunctions.net/generateStoryPages \
+  -H "Content-Type: application/json" \
+  -d '{"storyText": "测试故事包含争议内容"}'
+
+# 检查响应是否包含安全转换后的内容
+```
+
 ## 📈 扩展功能
 
 ### 批量图像生成
