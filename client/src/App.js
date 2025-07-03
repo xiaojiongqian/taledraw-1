@@ -1,23 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { auth } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { generateTale } from './api';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase';
 import PageSelector from './components/PageSelector';
 import AspectRatioSelector from './components/AspectRatioSelector';
+import CharacterManager from './components/CharacterManager';
+import PageItem from './components/PageItem';
 
 function App() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [story, setStory] = useState('');
-  const [pageCount, setPageCount] = useState(10); // 默认10页
+  const [storyTitle, setStoryTitle] = useState(''); // 自动生成的故事标题
+  const [pageCount, setPageCount] = useState(6); // 默认6页
   const [aspectRatio, setAspectRatio] = useState('16:9'); // 默认16:9
+  const [character, setCharacter] = useState({
+    name: '',
+    description: '',
+    referenceImage: null,
+    referenceImagePreview: null,
+    fidelity: 50,
+    isAutoExtracted: false
+  }); // 角色状态
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
+  const [logs, setLogs] = useState([]); // 生成过程日志
+  const [isPaused, setIsPaused] = useState(false); // 暂停状态
+  const [abortController, setAbortController] = useState(null); // 中断控制器
+  const [showDebugWindow, setShowDebugWindow] = useState(false); // 调试窗口显示状态
+  const [regeneratingPageIndex, setRegeneratingPageIndex] = useState(-1); // 正在重新生成的页面索引
+  const [isEditingTitle, setIsEditingTitle] = useState(false); // 标题编辑状态
+  const [editedTitle, setEditedTitle] = useState(''); // 编辑中的标题
+  const logIdCounter = useRef(0); // 日志ID计数器
+  const logsContentRef = useRef(null); // 日志内容引用
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -25,6 +47,13 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // 自动滚动日志到底部
+  useEffect(() => {
+    if (logsContentRef.current) {
+      logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const handleSignUp = async () => {
     setError('');
@@ -53,8 +82,18 @@ function App() {
       await signOut(auth);
       setPages([]);
       setStory('');
-      setPageCount(10); // 重置为默认值
+      setStoryTitle(''); // 清空故事标题
+      setPageCount(6); // 重置为默认值
       setAspectRatio('16:9'); // 重置为默认值
+      setCharacter({
+        name: '',
+        description: '',
+        referenceImage: null,
+        referenceImagePreview: null,
+        fidelity: 50,
+        isAutoExtracted: false
+      }); // 重置角色状态
+      setRegeneratingPageIndex(-1); // 重置重新生成状态
       setProgress('已登出');
     } catch (error) {
       setError("登出错误: " + error.message);
@@ -63,8 +102,50 @@ function App() {
   };
 
   const handleStoryChange = (event) => {
-    setStory(event.target.value);
-    setError('');
+    const newValue = event.target.value;
+    
+    // 字数限制：2000字
+    if (newValue.length <= 2000) {
+      setStory(newValue);
+      setError('');
+    } else {
+      // 如果超过限制，截取前2000字并显示警告
+      setStory(newValue.substring(0, 2000));
+      setError('故事内容已达到2000字限制，请精简内容');
+    }
+  };
+
+  // 添加日志函数
+  const addLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    logIdCounter.current += 1;
+    const newLog = {
+      id: logIdCounter.current,
+      timestamp,
+      message,
+      type
+    };
+    setLogs(prevLogs => [...prevLogs, newLog]);
+  };
+
+  // 暂停/继续功能
+  const handlePauseResume = () => {
+    setIsPaused(!isPaused);
+    if (!isPaused) {
+      addLog('Generation paused by user', 'warning');
+    } else {
+      addLog('Resuming generation process', 'info');
+    }
+  };
+
+  // 中断生成功能
+  const handleAbort = () => {
+    if (abortController) {
+      abortController.abort();
+      addLog('Generation aborted by user', 'error');
+    }
+    setLoading(false);
+    setIsPaused(false);
   };
 
   const generateTaleFlow = async () => {
@@ -75,48 +156,264 @@ function App() {
 
     setLoading(true);
     setError('');
-    setProgress(`开始生成${pageCount}页故事绘本（${aspectRatio}比例）...`);
     setPages([]);
+    setLogs([]); // 清空之前的日志
+    logIdCounter.current = 0; // 重置日志计数器
+    setIsPaused(false);
+    setShowDebugWindow(true); // 显示调试窗口
+
+    // 创建中断控制器
+    const controller = new AbortController();
+    setAbortController(controller);
 
     try {
-      // 使用新的返回格式，包含进度回调
+      addLog(`Starting generation of ${pageCount}-page storybook (${aspectRatio} ratio)`, 'info');
+      addLog(`Story content: ${story.substring(0, 100)}${story.length > 100 ? '...' : ''}`, 'info');
+
+      // 使用新的返回格式，包含进度回调和中断信号
       const result = await generateTale(story, pageCount, aspectRatio, (progress) => {
-        // 可以在这里更新UI显示进度
+        // 实时更新UI显示进度和页面
         if (progress.step === 'generating_pages') {
-          setProgress('正在分析故事并生成页面...');
+          if (progress.log) {
+            addLog(progress.log, 'llm');
+          }
         } else if (progress.step === 'generating_images') {
-          setProgress(`正在生成图像... (${progress.current}/${progress.total})`);
+          
+          // 添加图像生成日志，支持不同类型的日志
+          if (progress.log) {
+            const logType = progress.log.includes('failed') || progress.log.includes('error') ? 'error' :
+                           progress.log.includes('retry') || progress.log.includes('invalid') ? 'warning' :
+                           progress.log.includes('reference') || progress.log.includes('style') ? 'image' :
+                           'image';
+            addLog(progress.log, logType);
+          }
+          
+          // 每生成一张图片就立即显示
+          if (progress.allPages && progress.allPages.length > 0) {
+            setPages([...progress.allPages]);
+          }
         }
-      });
+      }, controller.signal);
       
-      // 现在result包含pages和statistics
+      // 现在result包含pages、statistics和storyTitle
       setPages(result.pages);
+      setStoryTitle(result.storyTitle || '您的故事绘本');
       
-      // 显示更详细的完成信息
-      const successRate = result.statistics.successRate;
-      if (successRate === 100) {
-        setProgress('🎉 故事绘本生成完成！所有图像都生成成功');
-      } else if (successRate >= 80) {
-        setProgress(`✅ 故事绘本生成完成！成功率: ${successRate}% (${result.statistics.successCount}/${result.statistics.totalPages})`);
-      } else {
-        setProgress(`⚠️ 故事绘本生成完成，但部分图像生成失败。成功率: ${successRate}% (${result.statistics.successCount}/${result.statistics.totalPages})`);
-      }
+      addLog(`Story generated with title: ${result.storyTitle || '未命名故事'}`, 'success');
+      addLog('All pages generated successfully', 'success');
       
     } catch (error) {
-      setError('生成故事绘本时出错: ' + error.message);
-      console.error("Error generating tale:", error);
+      if (error.name === 'AbortError') {
+        setError('Generation was aborted by user');
+        addLog('Generation process was aborted by user', 'error');
+      } else {
+        setError('Error generating storybook: ' + error.message);
+        addLog(`Generation error: ${error.message}`, 'error');
+        console.error("Error generating tale:", error);
+      }
     } finally {
       setLoading(false);
+      setIsPaused(false);
+      setAbortController(null);
     }
   };
 
   const clearStory = () => {
     setStory('');
+    setStoryTitle(''); // 清空故事标题
+    setIsEditingTitle(false); // 重置标题编辑状态
+    setEditedTitle(''); // 清空编辑中的标题
     setPages([]);
-    setPageCount(10); // 重置为默认值
+    setPageCount(6); // 重置为默认值
     setAspectRatio('16:9'); // 重置为默认值
+    setCharacter({
+      name: '',
+      description: '',
+      referenceImage: null,
+      referenceImagePreview: null,
+      fidelity: 50,
+      isAutoExtracted: false
+    }); // 重置角色状态
     setError('');
     setProgress('');
+    setLogs([]); // 清空日志
+    logIdCounter.current = 0; // 重置日志计数器
+    setIsPaused(false);
+    setShowDebugWindow(false); // 隐藏调试窗口
+    setRegeneratingPageIndex(-1); // 重置重新生成状态
+  };
+
+  // 重新生成单个页面图像
+  const regeneratePageImage = async (pageIndex, customPrompt = null) => {
+    if (pageIndex < 0 || pageIndex >= pages.length) {
+      setError('无效的页面索引');
+      return;
+    }
+
+    if (regeneratingPageIndex !== -1) {
+      addLog('已有页面正在重新生成中，请稍候...', 'warning');
+      return;
+    }
+
+    const currentPage = pages[pageIndex];
+    const userPrompt = customPrompt || currentPage.imagePrompt;
+
+    try {
+      setRegeneratingPageIndex(pageIndex);
+      
+      // 更新页面状态为生成中，并立即更新提示词
+      const updatedPages = [...pages];
+      updatedPages[pageIndex] = {
+        ...currentPage,
+        status: 'generating',
+        error: null,
+        image: null,
+        imagePrompt: userPrompt // 立即更新提示词到状态中
+      };
+      setPages(updatedPages);
+
+      addLog(`Regenerating image for page ${pageIndex + 1}...`, 'info');
+
+      // 判断是否为用户自定义的简单提示词（不包含原有的增强信息）
+      const isUserCustomPrompt = userPrompt && userPrompt.length < 200 && 
+                                !userPrompt.includes('IMPORTANT: Show the main character') &&
+                                !userPrompt.includes('Show only these characters') &&
+                                !userPrompt.includes('children\'s book illustration style');
+
+      // 构建最终的增强提示词
+      let finalPrompt = userPrompt;
+      
+      if (isUserCustomPrompt) {
+        // 用户自定义提示词 - 应用角色一致性增强
+        const { sceneCharacters = [], sceneType = '主角场景', mainCharacter = '', characterType = '' } = currentPage;
+        const artStyle = '儿童绘本插画风格';
+        
+        console.log(`User custom prompt detected for page ${pageIndex + 1}: "${userPrompt}"`);
+        console.log(`Applying character consistency - Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
+        
+        // 应用与原有系统相同的角色一致性逻辑
+        if (sceneType === '无角色场景') {
+          finalPrompt = `${userPrompt}. Focus on the scene and environment only, no characters should appear. ${artStyle}.`;
+        } else if (sceneType === '主角场景' && sceneCharacters.includes(mainCharacter?.split(' ')[0])) {
+          // 主角场景 - 应用主角一致性
+          if (pageIndex > 0) {
+            finalPrompt = `${userPrompt}. IMPORTANT: Show the main character - ${mainCharacter}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
+          } else {
+            finalPrompt = `${userPrompt}. Establish clear character design for the main character - ${mainCharacter}. ${artStyle}. This sets the visual foundation for the story.`;
+          }
+        } else if (sceneType === '配角场景' || sceneType === '群体场景') {
+          // 配角场景 - 只显示指定的配角，排除主角
+          if (sceneCharacters.length > 0) {
+            finalPrompt = `${userPrompt}. Show only these characters: ${sceneCharacters.join(', ')}. Do NOT show the main character (${mainCharacter}) in this scene. ${artStyle}.`;
+          } else {
+            finalPrompt = `${userPrompt}. Focus on the scene with the mentioned characters. Do NOT include the main character in this specific scene. ${artStyle}.`;
+          }
+        } else {
+          // 备用方案 - 添加基础绘本风格
+          finalPrompt = `${userPrompt}. ${artStyle}.`;
+        }
+        
+        // 根据宽高比优化构图描述
+        if (aspectRatio === '9:16') {
+          finalPrompt += ' Vertical composition, portrait orientation, characters positioned for tall frame.';
+        } else if (aspectRatio === '16:9') {
+          finalPrompt += ' Horizontal composition, landscape orientation, wide scene with good use of space.';
+        }
+      }
+
+      // 调用图像生成API
+      const generateImage = httpsCallable(functions, 'generateImage');
+      
+      // 构建增强的负向提示词，明确排除文字内容
+      const enhancedNegativePrompt = [
+        'text', 'words', 'letters', 'writing', 'signs', 'symbols', 'captions', 'subtitles', 
+        'labels', 'watermarks', 'typography', 'written text', 'readable text', 'book text',
+        'speech bubbles', 'dialogue boxes', 'written words', 'script', 'handwriting',
+        'blurry', 'low quality', 'distorted', 'bad anatomy'
+      ].join(', ');
+      
+      const requestData = {
+        prompt: finalPrompt,
+        pageIndex: pageIndex,
+        aspectRatio: aspectRatio,
+        seed: isUserCustomPrompt ? Math.floor(Math.random() * 10000) : (42 + pageIndex), // 用户自定义使用随机种子
+        maxRetries: 0, // 移除重试，直接失败
+        sampleCount: 1,
+        safetyFilterLevel: 'OFF',
+        personGeneration: 'allow_all',
+        addWatermark: false,
+        negativePrompt: enhancedNegativePrompt
+      };
+
+      console.log('Final enhanced prompt:', finalPrompt);
+      console.log('Is user custom prompt:', isUserCustomPrompt);
+      console.log('Using seed:', requestData.seed);
+
+      const result = await generateImage(requestData);
+
+      if (result.data && result.data.success && result.data.imageUrl) {
+        // 更新成功的页面
+        const finalPages = [...pages];
+        finalPages[pageIndex] = {
+          ...currentPage,
+          image: result.data.imageUrl,
+          imagePrompt: userPrompt, // 保存用户的原始提示词
+          status: 'success',
+          error: null,
+          isPlaceholder: false
+        };
+        setPages(finalPages);
+        addLog(`Page ${pageIndex + 1} image regenerated successfully`, 'success');
+      } else {
+        throw new Error(result.data.error || 'Unknown error');
+      }
+    } catch (error) {
+      console.error(`Failed to regenerate page ${pageIndex + 1}:`, error);
+      
+      // 更新失败的页面，但保持新的提示词
+      const errorPages = [...pages];
+      errorPages[pageIndex] = {
+        ...currentPage,
+        status: 'error',
+        error: error.message,
+        image: null,
+        imagePrompt: userPrompt // 即使失败也要保持新提示词
+      };
+      setPages(errorPages);
+      addLog(`Page ${pageIndex + 1} regeneration failed: ${error.message}`, 'error');
+    } finally {
+      setRegeneratingPageIndex(-1);
+    }
+  };
+
+  // 更新页面提示词
+  const updatePagePrompt = (pageIndex, newPrompt) => {
+    if (pageIndex < 0 || pageIndex >= pages.length) return;
+    
+    const updatedPages = [...pages];
+    updatedPages[pageIndex] = {
+      ...updatedPages[pageIndex],
+      imagePrompt: newPrompt
+    };
+    setPages(updatedPages);
+  };
+
+  // 开始编辑标题
+  const handleStartEditTitle = () => {
+    setEditedTitle(storyTitle || '您的故事绘本');
+    setIsEditingTitle(true);
+  };
+
+  // 保存标题
+  const handleSaveTitle = () => {
+    setStoryTitle(editedTitle.trim() || '您的故事绘本');
+    setIsEditingTitle(false);
+  };
+
+  // 取消编辑标题
+  const handleCancelEditTitle = () => {
+    setEditedTitle('');
+    setIsEditingTitle(false);
   };
 
   // 登录/注册界面
@@ -191,7 +488,7 @@ function App() {
       
       <main className="main-content">
         <div className="story-input-section">
-          <h2>📝 输入您的故事</h2>
+          <h2>输入您的故事</h2>
           <div className="story-input">
             <textarea
               value={story}
@@ -201,16 +498,39 @@ function App() {
               disabled={loading}
             />
             
+            {/* 字数计数显示 */}
+            <div className="character-count">
+              <span className={story.length > 1800 ? 'count-warning' : story.length > 1500 ? 'count-notice' : ''}>
+                {story.length}/2000 字
+              </span>
+              {story.length > 1800 && (
+                <span className="count-tip">
+                  {story.length >= 2000 ? ' - 已达字数上限' : ` - 还可输入 ${2000 - story.length} 字`}
+                </span>
+              )}
+            </div>
+            
             {/* 参数设置区域 */}
             <div className="story-settings">
-              <PageSelector 
-                pageCount={pageCount}
-                onPageCountChange={setPageCount}
-                disabled={loading}
-              />
-              <AspectRatioSelector 
-                aspectRatio={aspectRatio}
-                onAspectRatioChange={setAspectRatio}
+              {/* 基础设置组合 */}
+              <div className="basic-settings">
+                <PageSelector 
+                  pageCount={pageCount}
+                  onPageCountChange={setPageCount}
+                  disabled={loading}
+                />
+                <AspectRatioSelector 
+                  aspectRatio={aspectRatio}
+                  onAspectRatioChange={setAspectRatio}
+                  disabled={loading}
+                />
+              </div>
+              
+              {/* 角色设置单独区域 */}
+              <CharacterManager
+                story={story}
+                character={character}
+                onCharacterChange={setCharacter}
                 disabled={loading}
               />
             </div>
@@ -221,124 +541,129 @@ function App() {
                 disabled={loading || !story.trim()}
                 className="generate-button"
               >
-                {loading ? '🎨 生成中...' : `🎨 生成${pageCount}页绘本`}
+                {loading ? '生成中...' : `生成${pageCount}页绘本`}
               </button>
               <button 
                 onClick={clearStory}
                 disabled={loading}
                 className="clear-button"
               >
-                🗑️ 清空
+                清空
               </button>
             </div>
           </div>
           
           {error && <div className="error-message">{error}</div>}
-          {progress && <div className="progress-message">{progress}</div>}
         </div>
 
-        {loading && (
+        {(loading || showDebugWindow) && (
           <div className="loading-section">
-            <div className="loading-spinner"></div>
-            <p>正在生成您的故事绘本，请稍候...</p>
-            <small>这可能需要几分钟时间</small>
+            <div className="loading-header">
+              <div className="loading-info">
+                {loading && <div className="loading-spinner"></div>}
+                <p>{loading ? '正在生成您的故事绘本，请稍候...' : '生成已完成'}</p>
+              </div>
+              <div className="loading-controls">
+                {loading ? (
+                  <>
+                    <button 
+                      onClick={handlePauseResume}
+                      className="pause-button"
+                      disabled={isPaused}
+                    >
+                      {isPaused ? '已暂停' : '暂停'}
+                    </button>
+                    <button 
+                      onClick={handleAbort}
+                      className="abort-button"
+                    >
+                      中断
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={() => setShowDebugWindow(false)}
+                    className="close-debug-button"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* 生成日志显示区域 */}
+            <div className="generation-logs">
+              <div className="logs-content" ref={logsContentRef}>
+                {logs.map(log => (
+                  <div key={log.id} className={`log-entry log-${log.type}`}>
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span className="log-message">{log.message}</span>
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div className="log-entry log-placeholder">
+                    <span className="log-message">Waiting for generation to start...</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {pages.length > 0 && (
           <div className="tale-display-section">
-            <h2>📖 您的故事绘本</h2>
-            
-            {/* 生成统计信息 */}
-            <div className="generation-stats">
-              <div className="stats-item">
-                <span className="stats-label">总页数:</span>
-                <span className="stats-value">{pages.length}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-label">成功生成:</span>
-                <span className="stats-value stats-success">{pages.filter(p => p.status === 'success').length}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-label">使用占位符:</span>
-                <span className="stats-value stats-fallback">{pages.filter(p => p.isPlaceholder).length}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-label">成功率:</span>
-                <span className="stats-value stats-rate">
-                  {Math.round((pages.filter(p => p.status === 'success').length / pages.length) * 100)}%
-                </span>
-              </div>
+            <div className="tale-title-section">
+              {isEditingTitle ? (
+                <div className="title-editor">
+                  <input
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    className="title-input"
+                    placeholder="输入故事标题..."
+                    autoFocus
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveTitle();
+                      } else if (e.key === 'Escape') {
+                        handleCancelEditTitle();
+                      }
+                    }}
+                  />
+                  <div className="title-editor-actions">
+                    <button 
+                      onClick={handleSaveTitle}
+                      className="title-save-button"
+                    >
+                      保存
+                    </button>
+                    <button 
+                      onClick={handleCancelEditTitle}
+                      className="title-cancel-button"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="title-display">
+                  <h2 onClick={handleStartEditTitle} className="editable-title">
+                    {storyTitle || '您的故事绘本'}
+                  </h2>
+                </div>
+              )}
             </div>
             
             <div className="tale-display">
               {pages.map((page, index) => (
-                <div key={index} className={`page ${page.status || 'unknown'}`}>
-                  <div className="page-header">
-                    <div className="page-number">第 {index + 1} 页</div>
-                    <div className="page-status">
-                      {page.status === 'success' && !page.isPlaceholder && (
-                        <span className="status-badge success">✅ 真实图像</span>
-                      )}
-                      {page.isPlaceholder && page.status === 'fallback' && (
-                        <span className="status-badge fallback">⚠️ 占位符图像</span>
-                      )}
-                      {page.status === 'error' && (
-                        <span className="status-badge error">❌ 生成失败</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="page-content">
-                    <div className="page-text">
-                      <p>{page.text}</p>
-                    </div>
-                    <div className="page-image">
-                      {page.image ? (
-                        <img 
-                          src={page.image} 
-                          alt={`第 ${index + 1} 页插图`}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'block';
-                          }}
-                        />
-                      ) : (
-                        <div className="image-placeholder">
-                          {page.error ? (
-                            <div className="image-error">
-                              <span>❌</span>
-                              <p>图像生成失败</p>
-                              <small>{page.error}</small>
-                            </div>
-                          ) : (
-                            <div className="image-loading">
-                              <span>🎨</span>
-                              <p>图像生成中...</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className="image-error-fallback" style={{display: 'none'}}>
-                        <span>🖼️</span>
-                        <p>图像加载失败</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {page.imagePrompt && (
-                    <details className="image-prompt">
-                      <summary>查看图像提示词</summary>
-                      <p>{page.imagePrompt}</p>
-                    </details>
-                  )}
-                  
-                  {page.error && (
-                    <div className="error-details">
-                      <small>错误详情: {page.error}</small>
-                    </div>
-                  )}
-                </div>
+                <PageItem
+                  key={index}
+                  page={page}
+                  index={index}
+                  onRegenerateImage={regeneratePageImage}
+                  onUpdatePrompt={updatePagePrompt}
+                  isGenerating={regeneratingPageIndex === index || loading}
+                />
               ))}
             </div>
             

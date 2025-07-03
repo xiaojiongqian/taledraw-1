@@ -1,132 +1,71 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase';
 
 // GCP项目ID和区域配置
 // const PROJECT_ID = 'ai-app-taskforce';
 // const LOCATION = 'us-central1';
 
-// 初始化Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
+// 现在所有AI服务都通过Firebase Functions访问Vertex AI
 
 
 
-// 从故事文本生成分页内容和图像提示词
-async function generateStoryPages(storyText, pageCount = 10, aspectRatio = '16:9') {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-
-  // 根据长宽比优化构图提示
-  const aspectRatioHints = {
-    "16:9": "horizontal composition, landscape orientation, wide scene",
-    "9:16": "vertical composition, portrait orientation, tall scene"
-  };
-
-  const prompt = `
-请将以下故事分成适合儿童绘本的${pageCount}个页面。
-
-要求：
-- 总共生成${pageCount}页内容
-- 每页包含简洁的文字内容（与输入故事语言保持一致）
-- 每页包含详细的英文图像生成提示词
-- 保持角色外观一致性
-- 确保绘画风格统一（儿童绘本风格）
-- 图像提示词应包含角色描述、场景细节、艺术风格
-- 图像构图适配${aspectRatio}比例（${aspectRatioHints[aspectRatio]}）
-- **重要：生成的文字内容必须与输入故事文本的语言保持完全一致**
-
-故事内容：
-${storyText}
-
-请严格按照以下JSON格式返回，不要添加任何解释文字：
-
-{
-  "pages": [
-    {
-      "text": "页面文字内容（与输入故事语言一致）",
-      "imagePrompt": "详细的英文图像生成提示词，包含${aspectRatioHints[aspectRatio]}构图要求"
-    }
-  ]
-}
-`;
-
+// 从故事文本生成分页内容和图像提示词（通过Firebase Functions）
+async function generateStoryPages(storyText, pageCount = 6, aspectRatio = '16:9') {
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    console.log('通过Firebase Functions生成故事页面...');
     
-    console.log('Gemini原始响应:', text);
+    // 初始化Firebase Functions
+    const generateStoryPagesFunc = httpsCallable(functions, 'generateStoryPages');
     
-    // 多种方式提取JSON内容
-    let jsonData = null;
+    // 调用Firebase Function
+    const result = await generateStoryPagesFunc({
+      storyText: storyText,
+      pageCount: pageCount,
+      aspectRatio: aspectRatio
+    });
     
-    // 方法1: 寻找完整的JSON对象（包括嵌套的{}）
-    const jsonMatch = text.match(/\{(?:[^{}]|{[^{}]*})*\}/g);
-    if (jsonMatch && jsonMatch.length > 0) {
-      for (const match of jsonMatch) {
-        try {
-          const parsed = JSON.parse(match);
-          if (parsed.pages && Array.isArray(parsed.pages)) {
-            jsonData = parsed;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
+    console.log('故事页面生成结果:', result.data);
+    
+    if (result.data.success && result.data.pages) {
+      // 返回完整的故事信息，包括多角色场景数据和自动生成的标题
+      return {
+        storyTitle: result.data.storyTitle, // ✅ 添加缺失的标题字段
+        pages: result.data.pages,
+        mainCharacter: result.data.mainCharacter,
+        characterType: result.data.characterType,
+        artStyle: result.data.artStyle,
+        allCharacters: result.data.allCharacters || {},
+        storyAnalysis: result.data.storyAnalysis || {},
+        pagePlanStrategy: result.data.pagePlanStrategy || {},
+        aspectRatio: result.data.aspectRatio
+      };
+    } else {
+      throw new Error('故事页面生成失败');
     }
     
-    // 方法2: 寻找```json 代码块
-    if (!jsonData) {
-      const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
-      if (codeBlockMatch) {
-        try {
-          jsonData = JSON.parse(codeBlockMatch[1]);
-        } catch (e) {
-          console.warn('JSON代码块解析失败:', e);
-        }
-      }
-    }
-    
-    // 方法3: 如果找不到有效JSON，尝试手动创建结构
-    if (!jsonData || !jsonData.pages) {
-      console.log('无法解析JSON，尝试从文本中提取内容...');
-      return [
-        {
-          text: "抱歉，无法正确解析Gemini的响应。请尝试使用更简单的故事文本。",
-          imagePrompt: "A simple children's book illustration showing an error message, friendly cartoon style"
-        }
-      ];
-    }
-    
-    return jsonData.pages || [];
   } catch (error) {
     console.error('生成故事页面时出错:', error);
-    throw error;
+    
+    // 返回友好的错误信息
+    return {
+      pages: [
+        {
+          text: "抱歉，无法生成故事页面。请检查网络连接并重试。",
+          imagePrompt: "A simple children's book illustration showing an error message, friendly cartoon style, no text, no words, no letters, no signs, no symbols"
+        }
+      ],
+      mainCharacter: "通用角色",
+      characterType: "抽象角色",
+      artStyle: "儿童绘本插画风格",
+      allCharacters: {}
+    };
   }
 }
 
-// 生成占位符图像（暂时替代Imagen 4）
-async function generatePlaceholderImage(prompt, pageIndex) {
-  try {
-    console.log(`为第${pageIndex + 1}页生成占位符图像...`);
-    
-    // 创建一个带有提示词的占位符图像URL
-    // 使用picsum.photos服务生成随机图像作为演示
-    const seed = prompt.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    
-    const imageUrl = `https://picsum.photos/seed/${Math.abs(seed)}/400/300`;
-    
-    return imageUrl;
-  } catch (error) {
-    console.error(`生成第${pageIndex + 1}页占位符图像时出错:`, error);
-    return `https://via.placeholder.com/400x300/87CEEB/000000?text=Page+${pageIndex + 1}`;
-  }
-}
+// 移除了占位符图像生成函数
 
 // 重试辅助函数 - 指数退避算法
-async function retryWithBackoff(asyncFn, maxRetries = 3, baseDelay = 1000) {
+async function retryWithBackoff(asyncFn, maxRetries = 3, baseDelay = 1000, onRetry = null) {
   let lastError;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -148,6 +87,11 @@ async function retryWithBackoff(asyncFn, maxRetries = 3, baseDelay = 1000) {
       // 计算延迟时间（指数退避 + 随机抖动）
       const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
       console.log(`第${attempt + 1}次重试失败，${delay.toFixed(0)}ms后重试...`);
+      
+      // 调用重试回调
+      if (onRetry) {
+        onRetry(attempt + 1, error, delay);
+      }
       
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -186,143 +130,345 @@ function shouldRetryError(error) {
   return true;
 }
 
-// 使用Imagen 4生成图像（通过Firebase Functions）- 增强版本带重试
-async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', maxRetries = 3) {
+// 使用Imagen 3生成图像（通过Firebase Functions）- 智能多角色场景管理  
+async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', onProgress = null) {
   const attemptGeneration = async () => {
-    console.log(`正在使用Imagen 4生成第${pageIndex + 1}页图像（${aspectRatio}比例）...`);
+    const { sceneCharacters = [], sceneType = '主角场景', mainCharacter = '' } = pageData;
+    console.log(`Generating page ${pageIndex + 1} image - Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
     
-    // 使用Firebase Functions调用Imagen 4
-    const functions = getFunctions();
+    // 使用Firebase Functions调用Imagen 3
     const generateImage = httpsCallable(functions, 'generateImage');
     
-    const enhancedPrompt = `Children's book illustration, cartoon style: ${prompt}. Vibrant colors, friendly characters, suitable for kids aged 3-8. Digital art, clean lines, no text.`;
+    // 智能构建基于场景的角色提示词
+    let enhancedPrompt;
     
-    const result = await generateImage({
+    if (sceneType === '无角色场景') {
+      // 纯场景，不包含任何角色
+      enhancedPrompt = `${prompt}. Focus on the scene and environment only, no characters should appear. ${artStyle}.`;
+    } else if (sceneType === '主角场景' && sceneCharacters.includes(mainCharacter.split(' ')[0])) {
+      // 主角场景 - 应用主角一致性
+      if (pageIndex > 0) {
+        enhancedPrompt = `${prompt}. IMPORTANT: Show the main character - ${mainCharacter}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
+      } else {
+        enhancedPrompt = `${prompt}. Establish clear character design for the main character - ${mainCharacter}. ${artStyle}. This sets the visual foundation for the story.`;
+      }
+    } else if (sceneType === '配角场景' || sceneType === '群体场景') {
+      // 配角场景 - 只显示指定的配角，排除主角
+      const sceneCharacterDescriptions = sceneCharacters
+        .map(charName => allCharacters[charName] || charName)
+        .filter(desc => desc)
+        .join(', ');
+      
+      if (sceneCharacterDescriptions) {
+        enhancedPrompt = `${prompt}. Show only these characters: ${sceneCharacterDescriptions}. Do NOT show the main character (${mainCharacter}) in this scene. ${artStyle}.`;
+      } else {
+        enhancedPrompt = `${prompt}. Focus on the scene with the mentioned characters. Do NOT include the main character in this specific scene. ${artStyle}.`;
+      }
+    } else {
+      // 备用方案 - 使用原始逻辑
+      enhancedPrompt = `${prompt}. ${artStyle}.`;
+    }
+    
+    // 根据宽高比优化构图描述
+    if (aspectRatio === '9:16') {
+      enhancedPrompt += ' Vertical composition, portrait orientation, characters positioned for tall frame.';
+    } else if (aspectRatio === '16:9') {
+      enhancedPrompt += ' Horizontal composition, landscape orientation, wide scene with good use of space.';
+    }
+    
+    // 构建增强的负向提示词，明确排除文字内容
+    const enhancedNegativePrompt = [
+      'text', 'words', 'letters', 'writing', 'signs', 'symbols', 'captions', 'subtitles', 
+      'labels', 'watermarks', 'typography', 'written text', 'readable text', 'book text',
+      'speech bubbles', 'dialogue boxes', 'written words', 'script', 'handwriting',
+      'blurry', 'low quality', 'distorted', 'bad anatomy'
+    ].join(', ');
+
+    const requestData = {
       prompt: enhancedPrompt,
       pageIndex: pageIndex,
       aspectRatio: aspectRatio,
-      seed: 42 + pageIndex,
-      maxRetries: 2 // 服务端也进行重试
-    });
+      seed: 42 + pageIndex, // 重新启用seed参数获得一致的图像生成
+      maxRetries: 0, // 移除重试，直接失败
+      // 新增的 Imagen 3 参数
+      sampleCount: 1, // 生成图像数量
+      safetyFilterLevel: 'OFF', // 安全过滤级别：完全关闭过滤
+      personGeneration: 'allow_all', // 人物生成：allow_all (允许所有年龄段人物和面部)
+      addWatermark: false, // 禁用水印以支持 seed 参数
+      negativePrompt: enhancedNegativePrompt // 增强的负向提示词，明确排除文字
+    };
+
+    // 记录场景类型和角色信息
+    if (onProgress) {
+      const characterInfo = sceneCharacters.length > 0 ? sceneCharacters.join(', ') : 'no characters';
+      onProgress(`Generating page ${pageIndex + 1} - ${sceneType} with ${characterInfo}`, 'image');
+    }
+    console.log(`Page ${pageIndex + 1}: ${sceneType} - Characters: [${sceneCharacters.join(', ')}]`);
+    
+    const result = await generateImage(requestData);
     
     if (result.data && result.data.success && result.data.imageUrl) {
-      console.log(`第${pageIndex + 1}页图像生成成功`);
+      console.log(`Page ${pageIndex + 1} image generated successfully`);
       return result.data.imageUrl;
     } else {
-      console.error('Imagen 4 API返回错误:', result.data);
-      throw new Error(result.data.error || 'Imagen 4 API返回了无效的响应');
+      console.error('Imagen 4 API returned error:', result.data);
+      throw new Error(result.data.error || 'Imagen 4 API returned invalid response');
     }
   };
 
   try {
-    // 使用重试机制调用图像生成
-    return await retryWithBackoff(attemptGeneration, maxRetries, 2000);
+    // 直接调用图像生成，不进行重试
+    return await attemptGeneration();
   } catch (error) {
-    console.error(`生成第${pageIndex + 1}页图像时出错（已尝试${maxRetries + 1}次）:`, error);
+    console.error(`Error generating page ${pageIndex + 1} image:`, error);
     
     // 提供详细的错误信息
+    let errorMessage = '';
     if (error.code === 'functions/unauthenticated') {
-      console.error('Firebase认证错误，请确保已登录');
+      errorMessage = 'Firebase authentication error';
+      console.error('Firebase authentication error, please ensure you are logged in');
     } else if (error.code === 'functions/permission-denied') {
-      console.error('权限被拒绝，请检查Firebase规则');
+      errorMessage = 'Permission denied';
+      console.error('Permission denied, please check Firebase rules');
     } else if (error.code === 'functions/internal') {
-      console.error('服务器内部错误，已尝试多次重试');
+      errorMessage = 'Server internal error';
+      console.error('Server internal error');
+    } else {
+      errorMessage = error.message || 'Unknown error';
     }
     
-    // 只有在所有重试都失败后才回退到占位符图像
-    console.log(`所有重试都失败，回退到占位符图像...`);
-    return await generatePlaceholderImage(prompt, pageIndex);
+    if (onProgress) {
+      onProgress(`Page ${pageIndex + 1} generation failed: ${errorMessage}`, 'error');
+    }
+    
+    // 直接抛出错误，不再使用占位符图像
+    console.log(`Image generation failed, throwing error instead of using placeholder...`);
+    throw new Error(errorMessage);
   }
 }
 
 
 
 // 主要的故事生成函数
-export async function generateTale(storyText, pageCount = 10, aspectRatio = '16:9', onProgress = null) {
+export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9', onProgress = null, signal = null) {
   try {
-    console.log(`开始生成${pageCount}页故事绘本（${aspectRatio}比例）...`);
+    console.log(`Starting generation of ${pageCount}-page story book (${aspectRatio} ratio)...`);
     
     // 第一步：使用Gemini生成故事页面和图像提示词
-    console.log('使用Gemini分析故事并生成页面...');
-    if (onProgress) onProgress({ step: 'generating_pages', current: 0, total: pageCount + 1 });
+    console.log('Using Gemini to analyze story and generate pages...');
+    if (onProgress) {
+      onProgress({ 
+        step: 'generating_pages', 
+        current: 0, 
+        total: pageCount + 1,
+        log: 'Analyzing story with Gemini LLM...'
+      });
+    }
     
-    const storyPages = await generateStoryPages(storyText, pageCount, aspectRatio);
+    const storyData = await generateStoryPages(storyText, pageCount, aspectRatio);
     
-    if (!storyPages || storyPages.length === 0) {
-      throw new Error('未能生成故事页面');
+    if (!storyData || !storyData.pages || storyData.pages.length === 0) {
+      throw new Error('Failed to generate story pages');
     }
 
-    console.log(`生成了${storyPages.length}个故事页面`);
-    if (onProgress) onProgress({ step: 'generating_images', current: 0, total: storyPages.length });
+    const { 
+      storyTitle,
+      pages: storyPages, 
+      mainCharacter, 
+      characterType, 
+      artStyle, 
+      allCharacters,
+      storyAnalysis,
+      pagePlanStrategy 
+    } = storyData;
+    
+    console.log(`Generated ${storyPages.length} story pages with character: ${mainCharacter} (${characterType})`);
+    console.log(`Story analysis:`, storyAnalysis);
+    console.log(`Page planning strategy:`, pagePlanStrategy);
+    console.log(`Total characters identified:`, allCharacters);
+    
+    // 构建详细的分析日志
+    let analysisLog = `Generated ${storyPages.length} story pages with ${Object.keys(allCharacters || {}).length} characters`;
+    if (storyAnalysis?.totalLength) {
+      analysisLog += ` | Story length: ${storyAnalysis.totalLength}`;
+    }
+    if (storyAnalysis?.keyPlots?.length) {
+      analysisLog += ` | Key plots: ${storyAnalysis.keyPlots.length}`;
+    }
+    if (pagePlanStrategy?.contentDistribution) {
+      analysisLog += ` | Strategy: ${pagePlanStrategy.contentDistribution}`;
+    }
+    
+    if (onProgress) {
+      onProgress({ 
+        step: 'generating_pages', 
+        current: 1, 
+        total: pageCount + 1,
+        storyAnalysis: storyAnalysis || {},
+        pagePlanStrategy: pagePlanStrategy || {},
+        log: analysisLog
+      });
+    }
 
     // 第二步：为每个页面生成图像（串行处理以避免API限制）
-    const pagesWithImages = [];
+    // 首先创建基础的页面结构，这样可以立即显示文字内容
+    const pagesWithImages = storyPages.map((page, index) => ({
+      text: page.text,
+      image: null, // 图片待生成
+      imagePrompt: page.imagePrompt,
+      isPlaceholder: false,
+      status: 'generating' // 标记为生成中
+    }));
+    
+    // 立即显示包含文字的页面结构
+    if (onProgress) {
+      onProgress({ 
+        step: 'generating_images', 
+        current: 0, 
+        total: storyPages.length,
+        successCount: 0,
+        failureCount: 0,
+        allPages: [...pagesWithImages], // 显示带文字的页面结构
+        log: 'Starting image generation with Imagen 4...'
+      });
+    }
+    
     let successCount = 0;
     let failureCount = 0;
     
     for (let index = 0; index < storyPages.length; index++) {
-      const page = storyPages[index];
-      console.log(`正在生成第${index + 1}页图像（${aspectRatio}比例）...`);
+      // 检查是否用户已经中断操作
+      if (signal && signal.aborted) {
+        throw new Error('Generation was aborted by user');
+      }
       
-      try {
-        // 使用增强的重试机制生成图像
-        const imageUrl = await generateImageWithImagen(page.imagePrompt, index, aspectRatio, 3);
-        
-        // 检查是否是占位符图像（简单判断）
-        const isPlaceholder = imageUrl.includes('placeholder') || imageUrl.includes('picsum');
-        
-        pagesWithImages.push({
-          text: page.text,
-          image: imageUrl,
-          imagePrompt: page.imagePrompt,
-          isPlaceholder: isPlaceholder,
-          status: isPlaceholder ? 'fallback' : 'success'
-        });
-        
-        if (isPlaceholder) {
-          failureCount++;
-          console.warn(`第${index + 1}页使用了占位符图像`);
-        } else {
-          successCount++;
-          console.log(`第${index + 1}页图像生成成功`);
-        }
-        
-      } catch (error) {
-        console.error(`第${index + 1}页图像生成失败:`, error);
-        failureCount++;
-        
-        // 即使出错也要提供基本的页面结构
-        pagesWithImages.push({
-          text: page.text,
-          image: `https://via.placeholder.com/400x300/87CEEB/000000?text=Page+${index + 1}`,
-          imagePrompt: page.imagePrompt,
-          error: error.message,
-          isPlaceholder: true,
-          status: 'error'
+      const page = storyPages[index];
+      console.log(`Generating page ${index + 1} image (${aspectRatio} ratio) with character: ${mainCharacter}...`);
+      
+      // 生成开始日志
+      if (onProgress) {
+        const characterText = index > 0 ? ` maintaining ${mainCharacter} consistency` : ` establishing ${mainCharacter} design`;
+        onProgress({ 
+          step: 'generating_images', 
+          current: index, 
+          total: storyPages.length,
+          successCount,
+          failureCount,
+          allPages: [...pagesWithImages],
+          log: `Generating image for page ${index + 1}${characterText}...`
         });
       }
       
-      // 更新进度
+      try {
+        
+        // 使用增强的重试机制生成图像，传入参考图片URL和进度回调
+        const currentIndex = index;
+        const currentSuccessCount = successCount;
+        const currentFailureCount = failureCount;
+        
+        // 构建页面角色场景数据结构
+        const sceneData = {
+          sceneCharacters: page.sceneCharacters || [],
+          sceneType: page.sceneType || '主角场景',
+          mainCharacter: mainCharacter,
+          characterType: characterType
+        };
+
+        const imageUrl = await generateImageWithImagen(
+          page.imagePrompt, 
+          currentIndex, 
+          aspectRatio,
+          sceneData, // 传递页面角色场景数据
+          allCharacters || {}, // 传递所有角色描述
+          artStyle, // 传递艺术风格
+          (message, type) => {
+            // 将图像生成的详细日志传递给UI
+            if (onProgress) {
+              onProgress({
+                step: 'generating_images',
+                current: currentIndex,
+                total: storyPages.length,
+                successCount: currentSuccessCount,
+                failureCount: currentFailureCount,
+                allPages: [...pagesWithImages],
+                log: message
+              });
+            }
+          }
+        );
+        
+        // 图像生成成功
+        const pageData = {
+          text: page.text,
+          image: imageUrl,
+          imagePrompt: page.imagePrompt,
+          sceneType: page.sceneType || '主角场景',
+          sceneCharacters: page.sceneCharacters || [],
+          isPlaceholder: false,
+          status: 'success',
+          mainCharacter: mainCharacter,
+          characterType: characterType
+        };
+        
+        // 更新对应的页面数据
+        pagesWithImages[index] = pageData;
+        
+        successCount++;
+        console.log(`Page ${index + 1} image generated successfully with character: ${mainCharacter}`);
+        
+      } catch (error) {
+        console.error(`Page ${index + 1} image generation failed:`, error);
+        failureCount++;
+        
+        // 生成失败时不提供占位符图像，而是保持错误状态
+        pagesWithImages[index] = {
+          text: page.text,
+          image: null, // 不提供占位符图像
+          imagePrompt: page.imagePrompt,
+          sceneType: page.sceneType || '主角场景',
+          sceneCharacters: page.sceneCharacters || [],
+          error: error.message,
+          isPlaceholder: false,
+          status: 'error',
+          mainCharacter: mainCharacter,
+          characterType: characterType
+        };
+      }
+      
+      // 更新进度并传递当前生成的页面
       if (onProgress) {
+        const pageStatus = pagesWithImages[index];
+        let logMessage = '';
+        if (pageStatus.status === 'success') {
+          logMessage = `Page ${index + 1} image generated successfully (${characterType}: ${mainCharacter})`;
+        } else if (pageStatus.status === 'error') {
+          logMessage = `Page ${index + 1} generation failed: ${pageStatus.error}`;
+        }
+        
         onProgress({ 
           step: 'generating_images', 
           current: index + 1, 
           total: storyPages.length,
           successCount,
-          failureCount
+          failureCount,
+          newPage: pagesWithImages[index], // 传递新生成的页面数据
+          allPages: [...pagesWithImages], // 传递当前所有已生成的页面
+          log: logMessage
         });
       }
       
-      // 添加短暂延迟避免API限制
+      // 添加延迟避免API频繁调用导致的问题（优化稳定性）
       if (index < storyPages.length - 1) {
+        console.log(`Waiting 500ms before generating next page to avoid API rate limits...`);
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    console.log(`故事绘本生成完成！成功: ${successCount}, 失败: ${failureCount}`);
+    console.log(`Story book generation completed! Success: ${successCount}, Failed: ${failureCount}`);
     
-    // 返回结果包含统计信息
+    // 返回结果包含统计信息和故事标题
     return {
+      storyTitle: storyTitle || '未命名故事',
       pages: pagesWithImages,
       statistics: {
         totalPages: storyPages.length,
@@ -333,8 +479,132 @@ export async function generateTale(storyText, pageCount = 10, aspectRatio = '16:
     };
     
   } catch (error) {
-    console.error('生成故事绘本时出错:', error);
-    throw new Error(`故事生成失败: ${error.message}`);
+    console.error('Error generating story book:', error);
+    throw new Error(`Story generation failed: ${error.message}`);
+  }
+}
+
+// 角色提取函数 - 通过Firebase Functions调用Vertex AI
+export async function extractCharacter(storyText) {
+  try {
+    console.log('Starting to extract character information from story...');
+    
+    if (!storyText || !storyText.trim()) {
+      throw new Error('Story content cannot be empty');
+    }
+
+    // 使用Firebase Functions调用Vertex AI Gemini
+    const extractCharacterFunc = httpsCallable(functions, 'extractCharacter');
+
+    // 调用Firebase Function进行角色提取
+    const result = await extractCharacterFunc({
+      story: storyText.trim()
+    });
+    
+    console.log('Character extraction result:', result.data);
+    
+    // Firebase Function已经处理好了数据，直接使用
+    if (result.data && result.data.success) {
+      console.log('Character extraction successful:', result.data);
+      return result.data;
+    } else {
+      throw new Error(result.data?.error || 'Character extraction failed');
+    }
+    
+  } catch (error) {
+    console.error('Error during character extraction:', error);
+    
+    // 提供更友好的错误信息
+    if (error.message && error.message.includes('API key')) {
+      throw new Error('API key configuration error, please contact administrator');
+    } else if (error.message && error.message.includes('quota')) {
+      throw new Error('API quota insufficient, please try again later');
+    }
+    
+    throw new Error(`Character extraction failed: ${error.message}`);
+  }
+}
+
+// 角色形象生成函数
+export async function generateCharacterAvatar(characterName, characterDescription, negativePrompt = '', referenceImage = null, fidelity = 50) {
+  try {
+    console.log('Starting character avatar generation...');
+    
+    if (!characterName || !characterDescription) {
+      throw new Error('Character name and description cannot be empty');
+    }
+
+    // 构建角色形象的提示词，严格遵循角色描述
+    let characterPrompt = `Character portrait: ${characterName}. ${characterDescription}. Children's book illustration style, PNG with transparent background, no background elements.`;
+
+    // 添加负向提示（用户自定义或默认，包含文字排除）
+    const defaultNegativePrompt = [
+      'text', 'words', 'letters', 'writing', 'signs', 'symbols', 'captions',
+      'extra decorations not mentioned in description', 'additional accessories', 
+      'complex patterns', 'overly detailed textures', 'dramatic lighting', 
+      'realistic rendering', 'photorealistic style', 'busy designs', 
+      'extra colors not specified', 'ornate details'
+    ].join(', ');
+    const finalNegativePrompt = negativePrompt.trim() ? `${negativePrompt.trim()}, ${defaultNegativePrompt}` : defaultNegativePrompt;
+    
+    characterPrompt += `\n\nAVOID: ${finalNegativePrompt}.`;
+
+    // 如果有参考图片，根据遵循度调整提示词
+    if (referenceImage && fidelity > 0) {
+      if (fidelity > 70) {
+        characterPrompt += ` Style should closely follow the reference image with high fidelity (${fidelity}% similarity).`;
+      } else if (fidelity > 30) {
+        characterPrompt += ` Style should moderately follow the reference image (${fidelity}% similarity).`;
+      } else {
+        characterPrompt += ` Style inspired by reference image but with creative freedom (${fidelity}% similarity).`;
+      }
+    }
+
+    console.log('Character avatar generation prompt:', characterPrompt);
+
+    // 使用Firebase Functions调用Imagen 4
+    const generateImage = httpsCallable(functions, 'generateImage');
+    
+    const result = await generateImage({
+      prompt: characterPrompt,
+      pageIndex: 0, // 角色形象使用固定index
+      aspectRatio: '9:16', // 角色形象使用竖屏比例
+      // seed: characterName.split('').reduce((a, b) => a + b.charCodeAt(0), 0), // 临时禁用种子值
+      maxRetries: 0, // 移除重试，直接失败
+      // 角色头像专用参数
+      sampleCount: 1,
+      safetyFilterLevel: 'OFF',
+      personGeneration: 'allow_all', // 允许所有年龄段人物和面部生成
+      addWatermark: false, // 禁用水印以支持 seed 参数
+      negativePrompt: finalNegativePrompt
+    });
+    
+    if (result.data && result.data.success && result.data.imageUrl) {
+      console.log('Character avatar generated successfully');
+      return {
+        success: true,
+        imageUrl: result.data.imageUrl,
+        prompt: characterPrompt,
+        generatedAt: new Date().toISOString()
+      };
+    } else {
+      console.error('Imagen 4 API returned error:', result.data);
+      throw new Error(result.data.error || 'Imagen 4 API returned invalid response');
+    }
+    
+  } catch (error) {
+    console.error('Error generating character avatar:', error);
+    
+    // 提供更友好的错误信息
+    if (error.code === 'functions/unauthenticated') {
+      throw new Error('Please login first to use character avatar generation');
+    } else if (error.code === 'functions/permission-denied') {
+      throw new Error('Insufficient permissions to access character avatar generation service');
+    } else if (error.code === 'functions/internal') {
+      throw new Error('Server internal error, please try again later');
+    }
+    
+    throw new Error(`Character avatar generation failed: ${error.message}`);
   }
 }
 

@@ -1,3 +1,10 @@
+/* CSS变量定义 - 全局颜色配置 */
+:root {
+  /* 中性按钮颜色 */
+  --neutral-button-bg: #9ca3af;
+  --neutral-button-hover: #6c757d;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

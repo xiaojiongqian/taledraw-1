@@ -4,16 +4,34 @@ import './AspectRatioSelector.css';
 const AspectRatioSelector = ({ aspectRatio, onAspectRatioChange, disabled = false }) => {
   const ratioOptions = [
     {
-      value: '16:9',
-      label: '16:9',
-      description: '横屏',
-      preview: 'landscape'
+      value: '1:1',
+      label: '1:1',
+      width: 24,
+      height: 24
     },
     {
-      value: '9:16', 
+      value: '9:16',
       label: '9:16',
-      description: '竖屏',
-      preview: 'portrait'
+      width: 18,
+      height: 32
+    },
+    {
+      value: '16:9',
+      label: '16:9',
+      width: 32,
+      height: 18
+    },
+    {
+      value: '3:4',
+      label: '3:4',
+      width: 21,
+      height: 28
+    },
+    {
+      value: '4:3',
+      label: '4:3',
+      width: 28,
+      height: 21
     }
   ];
 
@@ -25,14 +43,7 @@ const AspectRatioSelector = ({ aspectRatio, onAspectRatioChange, disabled = fals
 
   return (
     <div className="aspect-ratio-selector">
-      <div className="aspect-ratio-header">
-        <label className="aspect-ratio-label">
-          图片比例
-        </label>
-        <div className="current-ratio">
-          {aspectRatio}
-        </div>
-      </div>
+      <h3 className="selector-title">Aspect ratio</h3>
       
       <div className="ratio-options">
         {ratioOptions.map((option) => (
@@ -42,21 +53,18 @@ const AspectRatioSelector = ({ aspectRatio, onAspectRatioChange, disabled = fals
             onClick={() => handleRatioChange(option.value)}
           >
             <div className="ratio-preview">
-              <div className={`preview-box ${option.preview}`}></div>
+              <div 
+                className="preview-box"
+                style={{
+                  width: `${option.width}px`,
+                  height: `${option.height}px`
+                }}
+              ></div>
             </div>
             
-            <div className="ratio-info">
-              <div className="ratio-label">
-                {option.label}
-              </div>
-              <div className="ratio-description">
-                {option.description}
-              </div>
+            <div className="ratio-label">
+              {option.label}
             </div>
-            
-            {aspectRatio === option.value && (
-              <div className="selected-indicator">✓</div>
-            )}
           </div>
         ))}
       </div>
