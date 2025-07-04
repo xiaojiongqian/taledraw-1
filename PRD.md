@@ -41,7 +41,8 @@ implement detail:
 2.Use firebase Functions to invoke GCP API, so we need adopt authentication(email/password) of firebase.
 3.Use firebase storage to store the drawings.
 4.The firebase resource is in the firebaseresouce file.
-5.We should use the latest/correct/stable version of firebase/GCP API, especially the Imagen-4 API correctly.
+5.Use npx to run firebase tools.
+6.Use LLM model: gemini-2.5-flash, Imagen 3
 
 
 

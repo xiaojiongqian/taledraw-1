@@ -311,7 +311,7 @@ if (exists) {
 
 ### GCP Imagen API
 - Imagen 4: ~$0.04 每张图像
-- 月度估算：1000张图像 ≈ $40
+- 月度估算：100K张图像 ≈ $4000
 
 ### Firebase Storage
 - 存储：$0.026/GB/月

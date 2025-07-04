@@ -7,60 +7,17 @@ import { functions } from './firebase';
 
 // 现在所有AI服务都通过Firebase Functions访问Vertex AI
 
+// 重新引入版本控制
+const IMAGEN_API_VERSION = process.env.REACT_APP_IMAGEN_API_VERSION || '3';
+const IMAGEN3_REGION = process.env.REACT_APP_IMAGEN3_REGION || 'us-east5';
+const IMAGEN4_REGION = process.env.REACT_APP_IMAGEN4_REGION || 'us-central1';
+const IMAGE_GEN_INTERVAL = IMAGEN_API_VERSION === '4' ? 1500 : 1000;
 
-
-// 从故事文本生成分页内容和图像提示词（通过Firebase Functions）
-async function generateStoryPages(storyText, pageCount = 6, aspectRatio = '16:9') {
-  try {
-    console.log('通过Firebase Functions生成故事页面...');
-    
-    // 初始化Firebase Functions
-    const generateStoryPagesFunc = httpsCallable(functions, 'generateStoryPages');
-    
-    // 调用Firebase Function
-    const result = await generateStoryPagesFunc({
-      storyText: storyText,
-      pageCount: pageCount,
-      aspectRatio: aspectRatio
-    });
-    
-    console.log('故事页面生成结果:', result.data);
-    
-    if (result.data.success && result.data.pages) {
-      // 返回完整的故事信息，包括多角色场景数据和自动生成的标题
-      return {
-        storyTitle: result.data.storyTitle, // ✅ 添加缺失的标题字段
-        pages: result.data.pages,
-        mainCharacter: result.data.mainCharacter,
-        characterType: result.data.characterType,
-        artStyle: result.data.artStyle,
-        allCharacters: result.data.allCharacters || {},
-        storyAnalysis: result.data.storyAnalysis || {},
-        pagePlanStrategy: result.data.pagePlanStrategy || {},
-        aspectRatio: result.data.aspectRatio
-      };
-    } else {
-      throw new Error('故事页面生成失败');
-    }
-    
-  } catch (error) {
-    console.error('生成故事页面时出错:', error);
-    
-    // 返回友好的错误信息
-    return {
-      pages: [
-        {
-          text: "抱歉，无法生成故事页面。请检查网络连接并重试。",
-          imagePrompt: "A simple children's book illustration showing an error message, friendly cartoon style, no text, no words, no letters, no signs, no symbols"
-        }
-      ],
-      mainCharacter: "通用角色",
-      characterType: "抽象角色",
-      artStyle: "儿童绘本插画风格",
-      allCharacters: {}
-    };
-  }
+function getCurrentRegion() {
+  return IMAGEN_API_VERSION === '4' ? IMAGEN4_REGION : IMAGEN3_REGION;
 }
+
+// 注意：原来的 generateStoryPages 函数已移除，现在直接使用云函数的 generateTale
 
 // 移除了占位符图像生成函数
 
@@ -130,14 +87,18 @@ function shouldRetryError(error) {
   return true;
 }
 
-// 使用Imagen 3生成图像（通过Firebase Functions）- 智能多角色场景管理  
-async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', onProgress = null) {
+// 使用Imagen 3或4生成图像（通过Firebase Functions）- 智能多角色场景管理  
+export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', onProgress = null) {
   const attemptGeneration = async () => {
-    const { sceneCharacters = [], sceneType = '主角场景', mainCharacter = '' } = pageData;
-    console.log(`Generating page ${pageIndex + 1} image - Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
+    const { sceneCharacters = [], sceneType = '主角场景' } = pageData;
     
-    // 使用Firebase Functions调用Imagen 3
-    const generateImage = httpsCallable(functions, 'generateImage');
+    // 根据.env配置动态选择函数名
+    const functionName = IMAGEN_API_VERSION === '4' ? 'generateImageV4' : 'generateImage'; 
+    
+    console.log(`生成第 ${pageIndex + 1} 页图像 - 函数: ${functionName}, 版本: ${IMAGEN_API_VERSION}`);
+    console.log(`场景: ${sceneType}, 角色: [${sceneCharacters.join(', ')}]`);
+
+    const generateImage = httpsCallable(functions, functionName);
     
     // 智能构建基于场景的角色提示词
     let enhancedPrompt;
@@ -145,24 +106,21 @@ async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', 
     if (sceneType === '无角色场景') {
       // 纯场景，不包含任何角色
       enhancedPrompt = `${prompt}. Focus on the scene and environment only, no characters should appear. ${artStyle}.`;
-    } else if (sceneType === '主角场景' && sceneCharacters.includes(mainCharacter.split(' ')[0])) {
-      // 主角场景 - 应用主角一致性
-      if (pageIndex > 0) {
-        enhancedPrompt = `${prompt}. IMPORTANT: Show the main character - ${mainCharacter}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
-      } else {
-        enhancedPrompt = `${prompt}. Establish clear character design for the main character - ${mainCharacter}. ${artStyle}. This sets the visual foundation for the story.`;
-      }
-    } else if (sceneType === '配角场景' || sceneType === '群体场景') {
-      // 配角场景 - 只显示指定的配角，排除主角
+    } else if (sceneType === '主角场景' || sceneType === '配角场景' || sceneType === '群体场景') {
+      // 显示指定的角色
       const sceneCharacterDescriptions = sceneCharacters
         .map(charName => allCharacters[charName] || charName)
         .filter(desc => desc)
         .join(', ');
       
       if (sceneCharacterDescriptions) {
-        enhancedPrompt = `${prompt}. Show only these characters: ${sceneCharacterDescriptions}. Do NOT show the main character (${mainCharacter}) in this scene. ${artStyle}.`;
+        if (pageIndex > 0) {
+          enhancedPrompt = `${prompt}. Show these characters: ${sceneCharacterDescriptions}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
+        } else {
+          enhancedPrompt = `${prompt}. Establish clear character design for these characters: ${sceneCharacterDescriptions}. ${artStyle}. This sets the visual foundation for the story.`;
+        }
       } else {
-        enhancedPrompt = `${prompt}. Focus on the scene with the mentioned characters. Do NOT include the main character in this specific scene. ${artStyle}.`;
+        enhancedPrompt = `${prompt}. Focus on the scene with the mentioned characters. ${artStyle}.`;
       }
     } else {
       // 备用方案 - 使用原始逻辑
@@ -247,44 +205,53 @@ async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', 
   }
 }
 
-
-
 // 主要的故事生成函数
 export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9', onProgress = null, signal = null) {
   try {
-    console.log(`Starting generation of ${pageCount}-page story book (${aspectRatio} ratio)...`);
+    console.log(`Starting tale generation (${pageCount} pages, ${aspectRatio} ratio)...`);
     
-    // 第一步：使用Gemini生成故事页面和图像提示词
-    console.log('Using Gemini to analyze story and generate pages...');
+    // 验证输入参数
+    if (!storyText || !storyText.trim()) {
+      throw new Error('Story text is required');
+    }
+
+    // 检查中断信号
+    if (signal && signal.aborted) {
+      throw new Error('Generation was aborted by user');
+    }
+
+    // 第一步：调用优化后的 generateTale 云函数（替代 generateStoryPages）
     if (onProgress) {
       onProgress({ 
         step: 'generating_pages', 
         current: 0, 
         total: pageCount + 1,
-        log: 'Analyzing story with Gemini LLM...'
+        log: 'Analyzing story and generating pages with character consistency...'
       });
     }
     
-    const storyData = await generateStoryPages(storyText, pageCount, aspectRatio);
-    
-    if (!storyData || !storyData.pages || storyData.pages.length === 0) {
+    // 直接调用云函数 generateTale
+    const generateTaleFunc = httpsCallable(functions, 'generateTale', { timeout: 540000 });
+    const storyResult = await generateTaleFunc({
+      story: storyText,
+      pageCount: pageCount,
+      aspectRatio: aspectRatio
+    });
+
+    if (!storyResult.data || !storyResult.data.pages || storyResult.data.pages.length === 0) {
       throw new Error('Failed to generate story pages');
     }
 
     const { 
       storyTitle,
       pages: storyPages, 
-      mainCharacter, 
-      characterType, 
       artStyle, 
       allCharacters,
-      storyAnalysis,
-      pagePlanStrategy 
-    } = storyData;
+      storyAnalysis 
+    } = storyResult.data;
     
-    console.log(`Generated ${storyPages.length} story pages with character: ${mainCharacter} (${characterType})`);
+    console.log(`Generated ${storyPages.length} story pages with ${Object.keys(allCharacters || {}).length} characters`);
     console.log(`Story analysis:`, storyAnalysis);
-    console.log(`Page planning strategy:`, pagePlanStrategy);
     console.log(`Total characters identified:`, allCharacters);
     
     // 构建详细的分析日志
@@ -295,9 +262,6 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
     if (storyAnalysis?.keyPlots?.length) {
       analysisLog += ` | Key plots: ${storyAnalysis.keyPlots.length}`;
     }
-    if (pagePlanStrategy?.contentDistribution) {
-      analysisLog += ` | Strategy: ${pagePlanStrategy.contentDistribution}`;
-    }
     
     if (onProgress) {
       onProgress({ 
@@ -305,7 +269,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         current: 1, 
         total: pageCount + 1,
         storyAnalysis: storyAnalysis || {},
-        pagePlanStrategy: pagePlanStrategy || {},
+        allCharacters: allCharacters || {},
         log: analysisLog
       });
     }
@@ -314,11 +278,13 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
     // 首先创建基础的页面结构，这样可以立即显示文字内容
     const pagesWithImages = storyPages.map((page, index) => ({
       text: page.text,
-      title: page.title, // ✅ 添加缺失的title字段
+      title: page.title,
       image: null, // 图片待生成
       imagePrompt: page.imagePrompt,
-      sceneType: page.sceneType, // ✅ 添加场景类型
-      sceneCharacters: page.sceneCharacters || [], // ✅ 添加场景角色
+      sceneType: page.sceneType,
+      sceneCharacters: page.sceneCharacters || [],
+      scenePrompt: page.scenePrompt,
+      characterPrompts: page.characterPrompts,
       isPlaceholder: false,
       status: 'generating' // 标记为生成中
     }));
@@ -331,7 +297,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         total: storyPages.length,
         successCount: 0,
         failureCount: 0,
-        allPages: [...pagesWithImages], // 显示带文字的页面结构
+        allPages: [...pagesWithImages],
         log: 'Starting image generation with Imagen 4...'
       });
     }
@@ -346,11 +312,10 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
       }
       
       const page = storyPages[index];
-      console.log(`Generating page ${index + 1} image (${aspectRatio} ratio) with character: ${mainCharacter}...`);
+      console.log(`Generating page ${index + 1} image (${aspectRatio} ratio)...`);
       
       // 生成开始日志
       if (onProgress) {
-        const characterText = index > 0 ? ` maintaining ${mainCharacter} consistency` : ` establishing ${mainCharacter} design`;
         onProgress({ 
           step: 'generating_images', 
           current: index, 
@@ -358,7 +323,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
           successCount,
           failureCount,
           allPages: [...pagesWithImages],
-          log: `Generating image for page ${index + 1}${characterText}...`
+          log: `Generating image for page ${index + 1}...`
         });
       }
       
@@ -372,9 +337,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         // 构建页面角色场景数据结构
         const sceneData = {
           sceneCharacters: page.sceneCharacters || [],
-          sceneType: page.sceneType || '主角场景',
-          mainCharacter: mainCharacter,
-          characterType: characterType
+          sceneType: page.sceneType || '主角场景'
         };
 
         const imageUrl = await generateImageWithImagen(
@@ -403,22 +366,22 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         // 图像生成成功
         const pageData = {
           text: page.text,
-          title: page.title, // ✅ 添加缺失的title字段
+          title: page.title,
           image: imageUrl,
           imagePrompt: page.imagePrompt,
           sceneType: page.sceneType || '主角场景',
           sceneCharacters: page.sceneCharacters || [],
+          scenePrompt: page.scenePrompt,
+          characterPrompts: page.characterPrompts,
           isPlaceholder: false,
-          status: 'success',
-          mainCharacter: mainCharacter,
-          characterType: characterType
+          status: 'success'
         };
         
         // 更新对应的页面数据
         pagesWithImages[index] = pageData;
         
         successCount++;
-        console.log(`Page ${index + 1} image generated successfully with character: ${mainCharacter}`);
+        console.log(`Page ${index + 1} image generated successfully`);
         
       } catch (error) {
         console.error(`Page ${index + 1} image generation failed:`, error);
@@ -427,16 +390,16 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         // 生成失败时不提供占位符图像，而是保持错误状态
         pagesWithImages[index] = {
           text: page.text,
-          title: page.title, // ✅ 添加缺失的title字段
+          title: page.title,
           image: null, // 不提供占位符图像
           imagePrompt: page.imagePrompt,
           sceneType: page.sceneType || '主角场景',
           sceneCharacters: page.sceneCharacters || [],
+          scenePrompt: page.scenePrompt,
+          characterPrompts: page.characterPrompts,
           error: error.message,
           isPlaceholder: false,
-          status: 'error',
-          mainCharacter: mainCharacter,
-          characterType: characterType
+          status: 'error'
         };
       }
       
@@ -445,7 +408,7 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         const pageStatus = pagesWithImages[index];
         let logMessage = '';
         if (pageStatus.status === 'success') {
-          logMessage = `Page ${index + 1} image generated successfully (${characterType}: ${mainCharacter})`;
+          logMessage = `Page ${index + 1} image generated successfully`;
         } else if (pageStatus.status === 'error') {
           logMessage = `Page ${index + 1} generation failed: ${pageStatus.error}`;
         }
@@ -462,30 +425,59 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
         });
       }
       
-      // 添加延迟避免API频繁调用导致的问题（优化稳定性）
-      if (index < storyPages.length - 1) {
-        console.log(`Waiting 500ms before generating next page to avoid API rate limits...`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      // 小延迟避免API限制
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
-
-    console.log(`Story book generation completed! Success: ${successCount}, Failed: ${failureCount}`);
     
-    // 返回结果包含统计信息和故事标题
-    return {
-      storyTitle: storyTitle || '未命名故事',
-      pages: pagesWithImages,
-      statistics: {
-        totalPages: storyPages.length,
+    const finalPages = [...pagesWithImages];
+    
+    console.log(`Tale generation completed. Generated ${finalPages.length} pages.`);
+    console.log(`Success rate: ${successCount}/${finalPages.length} (${Math.round(successCount / finalPages.length * 100)}%)`);
+    
+    // 生成完成
+    if (onProgress) {
+      onProgress({ 
+        step: 'complete', 
+        current: finalPages.length, 
+        total: finalPages.length,
         successCount,
         failureCount,
-        successRate: Math.round((successCount / storyPages.length) * 100)
-      }
+        allPages: finalPages,
+        log: `Tale generation completed. ${successCount} successful, ${failureCount} failed.`
+      });
+    }
+
+    return {
+      pages: finalPages,
+      statistics: {
+        totalPages: finalPages.length,
+        successfulImages: successCount,
+        failedImages: failureCount,
+        successRate: Math.round(successCount / finalPages.length * 100)
+      },
+      storyTitle: storyTitle || '您的故事绘本',
+      allCharacters: allCharacters || {},
+      artStyle: artStyle || '儿童绘本插画风格'
     };
-    
+
   } catch (error) {
-    console.error('Error generating story book:', error);
-    throw new Error(`Story generation failed: ${error.message}`);
+    console.error('Error in generateTale:', error);
+    
+    if (error.message.includes('aborted')) {
+      throw error; // 重新抛出中断错误
+    }
+    
+    // 生成失败
+    if (onProgress) {
+      onProgress({ 
+        step: 'error', 
+        current: 0, 
+        total: pageCount,
+        log: `Generation failed: ${error.message}`
+      });
+    }
+    
+    throw error;
   }
 }
 
@@ -499,6 +491,7 @@ export async function extractCharacter(storyText) {
     }
 
     // 使用Firebase Functions调用Vertex AI Gemini
+    const region = getCurrentRegion();
     const extractCharacterFunc = httpsCallable(functions, 'extractCharacter');
 
     // 调用Firebase Function进行角色提取
@@ -587,6 +580,7 @@ export async function generateCharacterAvatar(characterName, characterDescriptio
     console.log('Character avatar generation prompt:', characterPrompt);
 
     // 使用Firebase Functions调用Imagen 4
+    const region = getCurrentRegion();
     const generateImage = httpsCallable(functions, 'generateImage');
     
     const result = await generateImage({

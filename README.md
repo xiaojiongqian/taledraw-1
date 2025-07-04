@@ -228,3 +228,40 @@ npm test -- --coverage
   <a href="CONTENT_SAFETY.md">🛡️ 安全说明</a> •
   <a href="progress.md">📊 开发进度</a>
 </p> 
+
+## 🖼️ Imagen 多模型支持方案
+
+### 1. 方案目标
+- 同时支持Imagen 3和Imagen 4两套模型，便于平滑切换和A/B测试。
+- 通过.env配置决定当前使用哪一组API，无需重启后端。
+
+### 2. 技术实现
+- **Firebase Functions后端**：
+  - 保持现有Imagen 3相关函数（如`generateImage`、`generateImageBatch`）不变，继续服务Imagen 3。
+  - 新增Imagen 4专用函数组（如`generateImageV4`、`generateImageBatchV4`），API路径带`V4`后缀。
+  - Imagen 4函数组核心参数：
+    - `location` 固定为`us-central1`
+    - `model`为`imagen-4.0-generate-preview-06-06`
+    - 其他参数与Imagen 3兼容，特殊参数差异做适配
+- **前端/后端切换**：
+  - 在.env中增加`IMAGEN_API_VERSION=3`或`4`
+  - 前端/后端根据该配置决定调用哪一组API
+
+### 3. 参数与兼容性说明
+- Imagen 3与Imagen 4的API参数基本兼容，主流程参数（prompt、aspect_ratio、number_of_images等）一致。
+- Imagen 4不支持部分Imagen 3的高级定制参数（如few-shot subject/style customization、mask-based编辑等），如有用到需做适配。
+- 速率限制、区域、部分返回字段略有不同，详见Google官方文档。
+
+### 4. 典型调用流程
+```js
+// 伪代码
+const apiVersion = process.env.IMAGEN_API_VERSION;
+const apiName = apiVersion === '4' ? 'generateImageV4' : 'generateImage';
+const result = await callFirebaseFunction(apiName, params);
+```
+
+### 5. 扩展性
+- 支持未来更多模型版本的平滑接入
+- 便于灰度发布、A/B测试和回滚
+
+--- 

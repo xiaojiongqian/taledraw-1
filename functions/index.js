@@ -6,14 +6,19 @@ const { GoogleAuth } = require('google-auth-library');
 // 使用Node.js 22内置的全局fetch，无需导入
 
 // 设置全局选项
-setGlobalOptions({ region: 'us-east5' });
+setGlobalOptions({ region: 'us-central1' });
 
 // 初始化Firebase Admin
 admin.initializeApp();
 
 // GCP配置
 const PROJECT_ID = 'ai-app-taskforce';
-const LOCATION = 'us-east5'; // 切换到支持Imagen 4的区域
+const LOCATION = 'us-central1'; // 使用支持Gemini的主要区域
+
+// 全局初始化Google Auth客户端，以供所有函数复用
+const auth = new GoogleAuth({
+  scopes: ['https://www.googleapis.com/auth/cloud-platform']
+});
 
 // 重试辅助函数 - 指数退避算法（服务端版本）
 async function retryWithBackoff(asyncFn, maxRetries = 2, baseDelay = 1000) {
@@ -75,7 +80,7 @@ function shouldRetryImagenError(error) {
 }
 
 // Imagen API调用函数
-exports.generateImage = onCall(async (request) => {
+exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
   // 验证用户认证
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
@@ -95,7 +100,10 @@ exports.generateImage = onCall(async (request) => {
     negativePrompt
   } = request.data;
 
+  console.log('[generateImage] request.data:', JSON.stringify(request.data));
+
   if (!prompt) {
+    console.error('[generateImage] prompt is missing!');
     throw new HttpsError('invalid-argument', 'Prompt is required');
   }
 
@@ -115,37 +123,24 @@ exports.generateImage = onCall(async (request) => {
   const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '16:9';
 
   // 创建Imagen API调用函数
-  const callImagenAPI = async () => {
+  const callImagenAPI = async (accessToken) => {
     // 使用 imagen-3.0-generate-002 进行纯文本到图像生成
     // 不再处理参考图像，风格一致性通过种子值和增强提示词实现
     
     try {
       console.log(`Generating image for page ${pageIndex + 1} with aspect ratio ${aspectRatio} (${imagenAspectRatio})`);
 
-      // 初始化Google Auth
-      const auth = new GoogleAuth({
-        scopes: ['https://www.googleapis.com/auth/cloud-platform']
-      });
-
-      // 获取访问令牌
-      const client = await auth.getClient();
-      const accessToken = await client.getAccessToken();
-      
-      if (!accessToken || !accessToken.token) {
-        throw new Error('Failed to get access token');
+      if (!accessToken) {
+        throw new Error('Access token was not provided to callImagenAPI.');
       }
-
-      console.log('Successfully obtained access token');
-      console.log('Token type:', typeof accessToken.token);
-      console.log('Token starts with:', accessToken.token.substring(0, 20) + '...');
 
       // 使用 imagen-3.0-generate-002 模型，该模型支持图像生成
       // 注意：imagen-3.0-capability-001 不支持图像生成，只支持图像编辑
       const modelName = 'imagen-3.0-generate-002';
       const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${modelName}:predict`;
       
-      console.log('Using API URL:', apiUrl);
-      console.log('Using model:', modelName);
+      console.log('[generateImage] Using API URL:', apiUrl);
+      console.log('[generateImage] Using model:', modelName);
 
       // 构建 Imagen 3 Generate 模型的标准请求格式
       const instance = {
@@ -210,12 +205,12 @@ exports.generateImage = onCall(async (request) => {
         parameters: parameters
       };
 
-      console.log('Request body:', JSON.stringify(requestBody, null, 2));
+      console.log('[generateImage] Request body:', JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken.token}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json; charset=utf-8',
         },
         body: JSON.stringify(requestBody)
@@ -226,7 +221,7 @@ exports.generateImage = onCall(async (request) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Imagen API error details:', {
+        console.error('[generateImage] Imagen API error details:', {
           status: response.status,
           statusText: response.statusText,
           error: errorText
@@ -256,7 +251,7 @@ exports.generateImage = onCall(async (request) => {
           const fallbackResponse = await fetch(apiUrl, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${accessToken.token}`,
+              'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json; charset=utf-8',
             },
             body: JSON.stringify(fallbackRequestBody)
@@ -301,8 +296,8 @@ exports.generateImage = onCall(async (request) => {
 
       // 先获取原始响应文本进行详细记录
       const responseText = await response.text();
-      console.log('Raw API Response Text:', responseText);
-      console.log('Response Text Length:', responseText.length);
+      console.log('[generateImage] Raw API Response Text:', responseText);
+      console.log('[generateImage] Response Text Length:', responseText.length);
 
       // 检查响应是否为空
       if (!responseText || responseText.trim() === '') {
@@ -315,12 +310,12 @@ exports.generateImage = onCall(async (request) => {
       try {
         data = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('Failed to parse response as JSON:', parseError);
-        console.error('Response text that failed to parse:', responseText);
+        console.error('[generateImage] Failed to parse response as JSON:', parseError);
+        console.error('[generateImage] Response text that failed to parse:', responseText);
         throw new Error(`Invalid JSON response from Imagen API: ${parseError.message}`);
       }
       
-      console.log('API Response structure:', {
+      console.log('[generateImage] API Response structure:', {
         hasPredictions: !!data.predictions,
         predictionsLength: data.predictions ? data.predictions.length : 0,
         keys: Object.keys(data),
@@ -329,18 +324,18 @@ exports.generateImage = onCall(async (request) => {
       
       // 检查响应是否有错误信息
       if (data.error) {
-        console.error('Imagen API returned error in response:', data.error);
+        console.error('[generateImage] Imagen API returned error in response:', data.error);
         throw new Error(`Imagen API error: ${JSON.stringify(data.error)}`);
       }
 
       if (!data.predictions || !data.predictions[0]) {
-        console.error('Invalid Imagen API response structure:', data);
+        console.error('[generateImage] Invalid Imagen API response structure:', data);
         throw new Error('Invalid response structure from Imagen API - no predictions');
       }
 
       const prediction = data.predictions[0];
       if (!prediction.bytesBase64Encoded) {
-        console.error('No image data in prediction:', Object.keys(prediction));
+        console.error('[generateImage] No image data in prediction:', Object.keys(prediction));
         throw new Error('No image data in Imagen API response');
       }
 
@@ -348,14 +343,22 @@ exports.generateImage = onCall(async (request) => {
       return prediction.bytesBase64Encoded;
 
     } catch (error) {
-      console.error('Error in callImagenAPI:', error);
+      console.error('[generateImage] Error in callImagenAPI:', error);
       throw error;
     }
   };
 
   try {
-    // 直接调用Imagen API，不进行重试
-    const base64Data = await callImagenAPI();
+    // 在主函数入口处获取一次Token
+    const client = await auth.getClient();
+    const accessToken = await client.getAccessToken();
+
+    if (!accessToken || !accessToken.token) {
+      throw new HttpsError('internal', 'Failed to acquire access token.');
+    }
+
+    // 调用Imagen API，并传入Token
+    const base64Data = await callImagenAPI(accessToken.token);
 
     // 上传到Firebase Storage
     const bucketName = `${PROJECT_ID}.firebasestorage.app`;
@@ -418,7 +421,7 @@ exports.generateImage = onCall(async (request) => {
 });
 
 // 批量生成图像函数（可选）
-exports.generateImageBatch = onCall(async (request) => {
+exports.generateImageBatch = onCall({ region: 'us-central1' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -474,7 +477,7 @@ exports.generateImageBatch = onCall(async (request) => {
 });
 
 // 健康检查函数
-exports.healthCheck = onCall(() => {
+exports.healthCheck = onCall({ region: 'us-central1' }, () => {
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -482,227 +485,10 @@ exports.healthCheck = onCall(() => {
   };
 });
 
-// 故事页面生成函数
-exports.generateStoryPages = onCall(async (request) => {
-  // 验证用户认证
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'User must be authenticated');
-  }
-
-  const { storyText, pageCount = 6, aspectRatio = '16:9' } = request.data;
-
-  if (!storyText || !storyText.trim()) {
-    throw new HttpsError('invalid-argument', 'Story text is required');
-  }
-
-  try {
-    console.log('Generating story pages with Vertex AI Gemini...');
-
-    // 初始化Google Auth
-    const auth = new GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/cloud-platform']
-    });
-
-    // 获取访问令牌
-    const client = await auth.getClient();
-    const accessToken = await client.getAccessToken();
-
-    // 创建智能的故事分页提示词 - 采用全局规划方式
-    const prompt = `
-你是一位专业的儿童绘本编辑师。请分析并将以下故事改编为${pageCount}页的绘本，确保故事完整性和合理分布。
-
-**第一步：全局分析**
-首先分析故事的完整结构：
-1. 故事总长度和复杂度评估
-2. 识别关键情节点和转折点
-3. 确定故事的开始、发展、高潮、结局
-4. 分析所有重要角色和场景
-
-**第二步：分页规划**
-根据${pageCount}页的容量进行合理规划：
-1. 确保故事的每个重要部分都被包含（不能遗漏30-40%的内容）
-2. 避免最后几页重复或凑数
-3. 每页内容量要均衡，避免前松后紧
-4. 确保情节发展的连贯性和节奏感
-
-**第三步：角色一致性管理**
-1. 识别故事中的所有重要角色（主角和配角）
-2. 为每个角色建立统一的外观描述
-3. 确保角色在不同页面中保持视觉一致性
-
-**重要约束：**
-- 必须覆盖原故事的100%内容，不能省略任何重要情节
-- 每页文字内容要适中，避免信息过载
-- 严格控制角色出现的逻辑性
-- 图像中绝对不能包含任何文字、标识、符号等
-- 保持儿童绘本的温馨画风
-
-**内容安全指导：**
-在生成图像提示词时，如果原故事包含以下内容，请用中性、善意的词汇重新描述：
-1. **暴力场景**：将打斗、冲突描述为"角色间的友好竞赛"或"解决分歧的讨论"
-2. **恐怖元素**：将可怕的场景转化为"神秘的探险"或"有趣的挑战"
-3. **种族/文化差异**：强调多样性的美好，避免刻板印象，用包容性语言描述
-4. **负面情绪**：将愤怒、仇恨转化为"困惑"、"需要帮助"等更温和的表达
-5. **危险行为**：将冒险活动描述为"安全的探索"或"在成人监护下的活动"
-目标是保持故事本意的同时，确保图像生成服务能够成功处理提示词。
-
-**原故事内容：**
-${storyText}
-
-**请务必确保以下要点：**
-1. 故事开头到结尾的完整呈现
-2. 关键情节的合理分布
-3. 避免内容重复或凑数
-4. 每页都有独特且有意义的内容
-
-**第四步：标题创作**
-为故事创作一个吸引人的标题：
-1. 标题要体现故事的核心主题和精神
-2. 适合儿童绘本，简洁易记
-3. 与输入故事的语言保持一致
-4. 可以包含主角名称或关键元素
-
-请严格按照以下JSON格式返回：
-
-{
-  "storyTitle": "为故事生成的吸引人标题（与输入语言一致）",
-  "storyAnalysis": {
-    "totalLength": "故事长度评估（短/中/长）",
-    "keyPlots": ["关键情节点1", "关键情节点2", "..."],
-    "storyStructure": {
-      "beginning": "开始部分摘要",
-      "development": "发展部分摘要", 
-      "climax": "高潮部分摘要",
-      "ending": "结局部分摘要"
-    }
-  },
-  "pagePlanStrategy": {
-    "contentDistribution": "内容分布策略说明",
-    "plotMapping": ["第1页情节", "第2页情节", "..."]
-  },
-  "mainCharacter": "主角的统一描述（外观特征详细描述）",
-  "characterType": "人物|动物|拟人物体|抽象角色",
-  "artStyle": "整体绘画风格描述",
-  "allCharacters": {
-    "主角名称": "主角详细外观描述",
-    "配角名称": "配角详细外观描述"
-  },
-  "pages": [
-    {
-      "pageNumber": 1,
-      "title": "每页的吸引人小标题（与输入故事语言一致，简洁概括本页主要内容或情节，3-8个字）",
-      "plotPosition": "开始|发展|高潮|结局",
-      "text": "页面文字内容（与输入故事语言一致，确保不遗漏重要信息）",
-      "sceneCharacters": ["此页面应该出现的角色名称"],
-      "sceneType": "主角场景|配角场景|群体场景|无角色场景",
-      "keyPlotPoint": "本页承载的关键情节",
-      "imagePrompt": "详细的英文图像生成提示词，明确指出应该出现的角色外观，并排除其他角色。**重要**：如果原情节包含争议内容，必须用中性、友善的词汇重新描述，避免暴力、恐怖、歧视等可能被图像生成服务拒绝的词汇，同时保持故事本意。以', children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'结尾"
-    }
-  ]
-}
-`;
-
-    // 调用Vertex AI Gemini 2.0 Flash API (最新推荐模型)
-    const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash:generateContent`;
-    
-    const requestBody = {
-      contents: [{
-        role: "user",
-        parts: [{
-          text: prompt
-        }]
-      }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 8000, // 提升到8000 tokens以支持更长的故事和更多页数
-        responseMimeType: "application/json"
-      }
-    };
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken.token}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Vertex AI Gemini API error:', response.status, errorText);
-      throw new Error(`Vertex AI Gemini API failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    // 解析Gemini响应
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      console.error('Invalid Vertex AI Gemini API response structure:', data);
-      throw new Error('Invalid response structure from Vertex AI Gemini API');
-    }
-
-    const generatedText = data.candidates[0].content.parts[0].text;
-    console.log('Generated story pages:', generatedText);
-
-    // 尝试解析JSON响应
-    let pagesData;
-    try {
-      pagesData = JSON.parse(generatedText);
-    } catch (parseError) {
-      console.error('Failed to parse JSON response:', generatedText);
-      
-      // 如果JSON解析失败，返回错误
-      throw new Error('Failed to parse story pages from Gemini response');
-    }
-
-    // 验证返回的数据结构
-    if (!pagesData.pages || !Array.isArray(pagesData.pages)) {
-      throw new Error('Invalid pages structure in Gemini response');
-    }
-
-    console.log('Story pages generation successful:', {
-      storyTitle: pagesData.storyTitle,
-      pages: pagesData.pages.length,
-      mainCharacter: pagesData.mainCharacter,
-      characterType: pagesData.characterType,
-      artStyle: pagesData.artStyle,
-      allCharacters: pagesData.allCharacters ? Object.keys(pagesData.allCharacters).length : 0,
-      storyLength: pagesData.storyAnalysis?.totalLength,
-      keyPlots: pagesData.storyAnalysis?.keyPlots?.length || 0,
-      contentDistribution: pagesData.pagePlanStrategy?.contentDistribution
-    });
-
-    return {
-      storyTitle: pagesData.storyTitle || '未命名故事',
-      pages: pagesData.pages,
-      pageCount: pagesData.pages.length,
-      mainCharacter: pagesData.mainCharacter || '故事主角',
-      characterType: pagesData.characterType || '故事角色',
-      artStyle: pagesData.artStyle || '儿童绘本插画风格',
-      allCharacters: pagesData.allCharacters || {},
-      storyAnalysis: pagesData.storyAnalysis || {},
-      pagePlanStrategy: pagesData.pagePlanStrategy || {},
-      aspectRatio: aspectRatio,
-      success: true,
-      generatedAt: new Date().toISOString()
-    };
-
-  } catch (error) {
-    console.error('Error generating story pages:', error);
-    
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-
-    // 提供更详细的错误信息
-    let errorMessage = `Failed to generate story pages: ${error.message}`;
-    throw new HttpsError('internal', errorMessage);
-  }
-});
+// 注意：原 generateStoryPages 函数已移除，现在直接使用优化的 generateTale 函数
 
 // 角色提取函数
-exports.extractCharacter = onCall(async (request) => {
+exports.extractCharacter = onCall({ region: 'us-central1' }, async (request) => {
   // 验证用户认证
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
@@ -717,12 +503,7 @@ exports.extractCharacter = onCall(async (request) => {
   try {
     console.log('Extracting character from story...');
 
-    // 初始化Google Auth
-    const auth = new GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/cloud-platform']
-    });
-
-    // 获取访问令牌
+    // 获取访问令牌 (复用全局auth实例)
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
@@ -757,19 +538,41 @@ ${story.trim()}
 只返回JSON，不要其他内容。
 `;
 
-    // 调用Vertex AI Gemini 2.0 Flash Lite API (轻量级快速模型)
-    const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash-lite:generateContent`;
+    const geminiResponse = await callGemini(accessToken.token, characterExtractionPrompt, story);
+    const characterData = JSON.parse(geminiResponse);
     
+    return {
+      name: characterData.name || '主角',
+      description: characterData.description || '故事中的主要角色'
+    };
+
+  } catch (error) {
+    console.error('Error extracting character:', error);
+    throw new HttpsError('internal', `Character extraction failed: ${error.message}`);
+  }
+});
+
+async function callGemini(accessToken, systemPrompt, story) {
+  const model = 'gemini-2.5-flash';
+  const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${model}:generateContent`;
+
+  try {
+    if (!accessToken) {
+      throw new Error('Access token was not provided to callGemini.');
+    }
+
     const requestBody = {
       contents: [{
         role: "user",
-        parts: [{
-          text: characterExtractionPrompt
-        }]
+        parts: [{ text: story }]
       }],
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2000, // 适度提升角色提取的token限制
+        temperature: 0.8,
+        topP: 0.95,
+        maxOutputTokens: 32768, // 增加输出token限制以利用Gemini 2.5 Flash的能力
         responseMimeType: "application/json"
       }
     };
@@ -777,7 +580,7 @@ ${story.trim()}
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${accessToken.token}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json; charset=utf-8',
       },
       body: JSON.stringify(requestBody)
@@ -785,63 +588,425 @@ ${story.trim()}
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', response.status, errorText);
-      throw new Error(`Gemini API failed: ${response.status} - ${errorText}`);
+      console.error('Gemini API error:', { status: response.status, body: errorText });
+      throw new Error(`Gemini API failed with status ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
     
-    // 解析Gemini响应
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      console.error('Invalid Gemini API response structure:', data);
-      throw new Error('Invalid response structure from Gemini API');
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts[0].text) {
+      console.error('Invalid Gemini API response structure:', JSON.stringify(data, null, 2));
+      throw new Error('Invalid or empty response structure from Gemini API.');
     }
 
     const generatedText = data.candidates[0].content.parts[0].text;
-    console.log('Generated character info:', generatedText);
+    console.log('Successfully received structured data from Gemini 2.5 Flash.');
+    return generatedText;
 
-    // 尝试解析JSON响应
-    let characterInfo;
-    try {
-      characterInfo = JSON.parse(generatedText);
-    } catch (parseError) {
-      console.error('Failed to parse JSON response:', generatedText);
-      
-      // 如果JSON解析失败，使用默认格式
-      const lines = generatedText.split('\n').filter(line => line.trim());
-      characterInfo = {
-        name: '主角',
-        description: lines.length > 0 ? lines.join(' ') : '故事中的主要角色'
-      };
+  } catch (error) {
+    console.error('Error in callGemini function:', error);
+    throw new HttpsError('internal', `The call to Gemini API failed: ${error.message}`);
+  }
+}
+
+exports.generateTale = onCall({
+  region: 'us-central1',
+  timeoutSeconds: 540,
+  memory: '1GiB'
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated to generate a tale.');
+  }
+
+  const { story, pageCount = 10, aspectRatio = '16:9' } = request.data;
+  console.log('Received generation request:', {
+    userId: request.auth.uid,
+    storyLength: story.length,
+    pageCount,
+    aspectRatio
+  });
+
+  const systemPrompt = `
+You are a professional children's storybook editor and creative assistant. Your task is to transform a user-submitted story into a complete ${pageCount}-page illustrated storybook with consistent character design and child-friendly content.
+
+## WORKFLOW OVERVIEW
+
+### STEP 1: GLOBAL STORY ANALYSIS
+Analyze the complete story structure:
+- Assess total story length and complexity
+- Identify key plot points and turning points
+- Map story arc: beginning → development → climax → resolution
+- Catalog all important characters and settings
+- Ensure NO content will be omitted (cover 100% of original story)
+
+### STEP 2: CHARACTER CONSISTENCY MANAGEMENT
+For EACH main character appearing in the story:
+- Create detailed character sheet with physical appearance (hair, eyes, build, age, distinctive features)
+- Define consistent clothing/attire description
+- Note personality traits that affect visual representation
+- Ensure descriptions work across all cultural contexts
+- These descriptions will be referenced in every image prompt featuring that character
+
+### STEP 3: CONTENT SAFETY OPTIMIZATION
+Transform any potentially problematic content using child-friendly alternatives:
+- Violence/conflict → "friendly competition" or "discussion to resolve differences"
+- Horror/scary elements → "mysterious adventure" or "interesting challenge"
+- Negative emotions → "confusion" or "need for help"
+- Dangerous activities → "safe exploration under adult supervision"
+- Cultural stereotypes → inclusive, diverse descriptions
+**Goal**: Maintain story essence while ensuring high image generation success rate
+
+### STEP 4: PAGE DISTRIBUTION STRATEGY
+Distribute content across ${pageCount} pages ensuring:
+- Balanced content per page (avoid front-loaded or back-loaded distribution)
+- Complete story coverage (no important plot omissions)
+- No repetitive or filler content
+- Logical narrative flow and pacing
+- Each page contributes meaningfully to the story
+
+### STEP 5: ART STYLE IDENTIFICATION
+Determine the most appropriate visual style based on:
+- Story genre and mood
+- Target age group
+- Cultural context
+- Character types (human/animal/fantasy)
+
+## OUTPUT REQUIREMENTS
+
+Return a single valid JSON object with this exact structure:
+
+{
+  "storyTitle": "Creative, engaging title in the same language as input story",
+  "artStyle": "Specific art style description (e.g., 'children's book watercolor illustration', 'cartoon style digital art')",
+  "storyAnalysis": {
+    "totalLength": "short|medium|long",
+    "keyPlots": ["plot point 1", "plot point 2", "..."],
+    "storyStructure": {
+      "beginning": "beginning summary",
+      "development": "development summary", 
+      "climax": "climax summary",
+      "ending": "ending summary"
+    }
+  },
+  "allCharacters": {
+    "Character Name 1": {
+      "appearance": "Detailed physical description including age, build, facial features, hair, distinctive characteristics",
+      "clothing": "Typical attire, accessories, colors, style",
+      "personality": "Key personality traits that affect visual representation (e.g., confident posture, shy demeanor)"
+    },
+    "Character Name 2": {
+      "appearance": "...",
+      "clothing": "...",
+      "personality": "..."
+    }
+  },
+  "pages": [
+    {
+      "pageNumber": 1,
+      "title": "Brief page title in same language as story (3-8 words)",
+      "text": "Page content in same language as input story, ensuring story completeness",
+      "sceneType": "Brief setting description (e.g., 'enchanted forest', 'cozy kitchen')",
+      "sceneCharacters": ["Character names present in this scene"],
+      "imagePrompt": "Detailed English prompt starting with the identified art style. Include specific character descriptions from character sheets for any characters present. Describe scene, actions, expressions, mood. End with: ', children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'",
+      "scenePrompt": "Scene/setting portion of the imagePrompt",
+      "characterPrompts": "Character description portion of the imagePrompt"
+    }
+  ]
+}
+
+## CRITICAL REQUIREMENTS
+- Use the SAME LANGUAGE as the input story for all text content (title, page text)
+- Use ENGLISH for imagePrompt, scenePrompt, characterPrompts (for optimal image generation)
+- Include ALL story content across pages (no omissions)
+- Maintain character visual consistency through detailed character sheets
+- Apply content safety transformations while preserving story meaning
+- Ensure each page has unique, meaningful content (no filler or repetition)
+
+## EXAMPLE CHARACTER SHEET
+"Leo": {
+  "appearance": "An 8-year-old boy with messy brown curly hair, bright green eyes, freckles across his nose, medium build for his age, cheerful facial expression",
+  "clothing": "Red and white striped t-shirt, blue denim shorts, white sneakers with blue laces, small brown backpack",
+  "personality": "Curious and adventurous, confident posture, tends to lean forward when interested, expressive hand gestures"
+}
+
+Analyze this story and transform it according to the above requirements:
+
+${story}
+`;
+
+  try {
+    // 在主函数入口处获取一次Token
+    const client = await auth.getClient();
+    const accessToken = await client.getAccessToken();
+
+    if (!accessToken || !accessToken.token) {
+      throw new HttpsError('internal', 'Failed to acquire access token for tale generation.');
+    }
+    
+    const geminiResponse = await callGemini(accessToken.token, systemPrompt, story);
+    const taleData = JSON.parse(geminiResponse);
+
+    // Validate the response structure
+    if (!taleData.pages || !Array.isArray(taleData.pages)) {
+      throw new Error('Invalid pages structure in Gemini response');
     }
 
-    // 验证返回的数据结构
-    if (!characterInfo.name) {
-      characterInfo.name = '主角';
-    }
-    if (!characterInfo.description) {
-      characterInfo.description = '故事中的主要角色，具有独特的个性和外观特征';
-    }
-
-    console.log('Character extraction successful:', characterInfo);
+    console.log('Story generation successful:', {
+      storyTitle: taleData.storyTitle,
+      pages: taleData.pages.length,
+      artStyle: taleData.artStyle,
+      characterCount: taleData.allCharacters ? Object.keys(taleData.allCharacters).length : 0
+    });
 
     return {
-      name: characterInfo.name,
-      description: characterInfo.description,
+      pages: taleData.pages || [],
+      storyTitle: taleData.storyTitle || 'Untitled Story',
+      artStyle: taleData.artStyle || 'children\'s book illustration',
+      allCharacters: taleData.allCharacters || {},
+      storyAnalysis: taleData.storyAnalysis || {},
+      aspectRatio: aspectRatio,
       success: true,
-      extractedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString()
     };
 
   } catch (error) {
-    console.error('Error extracting character:', error);
-    
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-
-    // 提供更详细的错误信息
-    let errorMessage = `Failed to extract character: ${error.message}`;
-    throw new HttpsError('internal', errorMessage);
+    console.error('Error in generateTale:', error);
+    throw new HttpsError('internal', 'Failed to generate tale: ' + error.message);
   }
 });
+
+// ========== Imagen 4 专用函数组 ========== //
+
+const IMAGEN4_PROJECT_ID = 'ai-app-taskforce';
+const IMAGEN4_LOCATION = 'us-central1';
+const IMAGEN4_MODEL = 'imagen-4.0-generate-preview-06-06';
+
+/**
+ * 专用函数组：使用Imagen 4生成图像
+ * - 使用 us-central1 区域
+ * - 模型：imagen-4.0-generate-preview-06-06
+ * - 支持一致的角色生成
+ * - 更好的提示词理解能力
+ * - 更高的图像质量
+ */
+exports.generateImageV4 = onCall(
+  {
+    region: "us-central1", //  Imagen 4 专用
+    timeoutSeconds: 540,
+    memory: "4GB",
+    minInstances: 0,
+    concurrency: 1, // 根据需要调整并发
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "User must be authenticated");
+    }
+
+    const {
+      prompt,
+      pageIndex = 0,
+      aspectRatio = '16:9',
+      maxRetries = 2,
+      seed = 42,
+      sampleCount = 1,
+      safetyFilterLevel = 'OFF',
+      personGeneration = 'allow_all',
+      addWatermark = false,
+      negativePrompt
+    } = request.data;
+
+    console.log('[generateImageV4] request.data:', JSON.stringify(request.data));
+
+    if (!prompt) {
+      console.error('[generateImageV4] prompt is missing!');
+      throw new HttpsError('invalid-argument', 'Prompt is required');
+    }
+
+    // 将用户友好的比例转换为Imagen API支持的格式
+    const aspectRatioMapping = {
+      '16:9': '16:9',
+      '9:16': '9:16',
+      '1:1': '1:1',
+      '3:4': '3:4',
+      '4:3': '4:3'
+    };
+    const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '16:9';
+
+    // 构建Imagen 4 API调用
+    const callImagen4API = async (accessToken) => {
+      try {
+        if (!accessToken) {
+          throw new Error('Access token was not provided to callImagen4API.');
+        }
+
+        const apiUrl = `https://${IMAGEN4_LOCATION}-aiplatform.googleapis.com/v1/projects/${IMAGEN4_PROJECT_ID}/locations/${IMAGEN4_LOCATION}/publishers/google/models/${IMAGEN4_MODEL}:predict`;
+        const instance = { prompt };
+        const parameters = {
+          sampleCount: Math.min(Math.max(1, sampleCount), 4),
+          safetyFilterLevel: safetyFilterLevel,
+          addWatermark: addWatermark
+        };
+        const promptLower = prompt.toLowerCase();
+        const hasPersonKeywords = /person|people|man|woman|boy|girl|child|adult|human|character|protagonist|hero|heroine/.test(promptLower);
+        if (hasPersonKeywords) {
+          parameters.personGeneration = personGeneration || 'allow_all';
+        }
+        if (seed && typeof seed === 'number') {
+          parameters.seed = seed;
+        }
+        if (aspectRatio && aspectRatio !== '1:1') {
+          parameters.aspectRatio = imagenAspectRatio;
+        }
+        const requestBody = {
+          instances: [instance],
+          parameters: parameters
+        };
+        console.log('[generateImageV4] API URL:', apiUrl);
+        console.log('[generateImageV4] requestBody:', JSON.stringify(requestBody));
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify(requestBody)
+        });
+        const responseText = await response.text();
+        console.log('[generateImageV4] Imagen 4 API raw response:', responseText);
+        if (!response.ok) {
+          let errorMessage = `Imagen 4 API failed: ${response.status}`;
+          errorMessage += ` - ${responseText}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          throw error;
+        }
+        if (!responseText || responseText.trim() === '') {
+          throw new Error('Empty response from Imagen 4 API');
+        }
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('[generateImageV4] Failed to parse Imagen 4 API response as JSON:', responseText);
+          throw new Error(`Invalid JSON response from Imagen 4 API: ${parseError.message}`);
+        }
+        if (data.error) {
+          console.error('[generateImageV4] Imagen 4 API returned error:', data.error);
+          throw new Error(`Imagen 4 API error: ${JSON.stringify(data.error)}`);
+        }
+        if (!data.predictions || !data.predictions[0]) {
+          console.error('[generateImageV4] Invalid response structure from Imagen 4 API:', data);
+          throw new Error('Invalid response structure from Imagen 4 API - no predictions. Full response: ' + JSON.stringify(data));
+        }
+        const prediction = data.predictions[0];
+        if (!prediction.bytesBase64Encoded) {
+          throw new Error('No image data in Imagen 4 API response');
+        }
+        return prediction.bytesBase64Encoded;
+      } catch (error) {
+        console.error('[generateImageV4] Exception:', {
+          prompt,
+          pageIndex,
+          aspectRatio,
+          seed,
+          sampleCount,
+          safetyFilterLevel,
+          personGeneration,
+          addWatermark,
+          apiUrl: typeof apiUrl !== 'undefined' ? apiUrl : null,
+          requestBody: typeof requestBody !== 'undefined' ? requestBody : null,
+          error: error && error.message ? error.message : error
+        });
+        throw error;
+      }
+    };
+
+    try {
+      // 在主函数入口处获取一次Token
+      const client = await auth.getClient();
+      const accessToken = await client.getAccessToken();
+
+      if (!accessToken || !accessToken.token) {
+        throw new HttpsError('internal', 'Failed to acquire access token for Imagen4.');
+      }
+
+      const base64Data = await callImagen4API(accessToken.token);
+      // 上传到Firebase Storage
+      const bucketName = `${IMAGEN4_PROJECT_ID}.firebasestorage.app`;
+      const bucket = admin.storage().bucket(bucketName);
+      const fileName = `tale-images-v4/${request.auth.uid}/${Date.now()}_page_${pageIndex}.jpg`;
+      const file = bucket.file(fileName);
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      await file.save(imageBuffer, {
+        metadata: {
+          contentType: 'image/jpeg',
+          metadata: {
+            userId: request.auth.uid,
+            pageIndex: pageIndex.toString(),
+            prompt: prompt.substring(0, 500)
+          }
+        }
+      });
+      await file.makePublic();
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+      return {
+        imageUrl: publicUrl,
+        pageIndex: pageIndex,
+        success: true
+      };
+    } catch (error) {
+      let errorMessage = `Failed to generate image (Imagen 4): ${error.message}`;
+      if (error.status) {
+        errorMessage += ` (HTTP ${error.status})`;
+      }
+      throw new HttpsError('internal', errorMessage);
+    }
+  }
+);
+
+exports.generateImageBatchV4 = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated');
+    }
+    const { prompts } = request.data;
+    if (!prompts || !Array.isArray(prompts)) {
+      throw new HttpsError('invalid-argument', 'Prompts array is required');
+    }
+    try {
+      const results = [];
+      for (let i = 0; i < prompts.length; i++) {
+        try {
+          const imageRequest = {
+            auth: request.auth,
+            data: {
+              prompt: prompts[i],
+              pageIndex: i
+            }
+          };
+          const result = await exports.generateImageV4(imageRequest);
+          results.push({
+            pageIndex: i,
+            success: true,
+            imageUrl: result.imageUrl
+          });
+        } catch (error) {
+          results.push({
+            pageIndex: i,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+      return {
+        results: results,
+        totalPages: prompts.length,
+        successCount: results.filter(r => r.success).length
+      };
+    } catch (error) {
+      throw new HttpsError('internal', `Batch generation (Imagen 4) failed: ${error.message}`);
+    }
+  }
+);
 
