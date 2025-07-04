@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { auth } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { generateTale } from './api';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from './firebase';
+import { generateTale, generateCharacterAvatar, generateImageWithImagen } from './api';
 import PageSelector from './components/PageSelector';
 import AspectRatioSelector from './components/AspectRatioSelector';
 import CharacterManager from './components/CharacterManager';
@@ -18,6 +16,8 @@ function App() {
   const [storyTitle, setStoryTitle] = useState(''); // 自动生成的故事标题
   const [pageCount, setPageCount] = useState(6); // 默认6页
   const [aspectRatio, setAspectRatio] = useState('16:9'); // 默认16:9
+  const [artStyle, setArtStyle] = useState('儿童绘本插画风格'); // 新增艺术风格状态
+  const [allCharacters, setAllCharacters] = useState({}); // 新增所有角色信息状态
   const [character, setCharacter] = useState({
     name: '',
     description: '',
@@ -35,11 +35,11 @@ function App() {
   const [isPaused, setIsPaused] = useState(false); // 暂停状态
   const [abortController, setAbortController] = useState(null); // 中断控制器
   const [showDebugWindow, setShowDebugWindow] = useState(false); // 调试窗口显示状态
-  const [regeneratingPageIndex, setRegeneratingPageIndex] = useState(-1); // 正在重新生成的页面索引
   const [isEditingTitle, setIsEditingTitle] = useState(false); // 标题编辑状态
   const [editedTitle, setEditedTitle] = useState(''); // 编辑中的标题
   const logIdCounter = useRef(0); // 日志ID计数器
   const logsContentRef = useRef(null); // 日志内容引用
+  const [storyWordCount, setStoryWordCount] = useState(0); // 新增字数状态
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -54,6 +54,19 @@ function App() {
       logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
     }
   }, [logs]);
+
+  // 多语言字数统计函数
+  function countWords(text) {
+    // 匹配所有CJK字符（中文、日文、韩文）
+    const cjk = text.match(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g) || [];
+    // 匹配所有非CJK的单词（包括阿拉伯语、英文等）
+    const nonCjk = text
+      .replace(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    return cjk.length + nonCjk.length;
+  }
 
   const handleSignUp = async () => {
     setError('');
@@ -93,7 +106,6 @@ function App() {
         fidelity: 50,
         isAutoExtracted: false
       }); // 重置角色状态
-      setRegeneratingPageIndex(-1); // 重置重新生成状态
       setProgress('已登出');
     } catch (error) {
       setError("登出错误: " + error.message);
@@ -103,16 +115,31 @@ function App() {
 
   const handleStoryChange = (event) => {
     const newValue = event.target.value;
-    
-    // 字数限制：2000字
-    if (newValue.length <= 2000) {
-      setStory(newValue);
-      setError('');
-    } else {
-      // 如果超过限制，截取前2000字并显示警告
-      setStory(newValue.substring(0, 2000));
+    const wordLimit = 2000;
+    let currentCount = countWords(newValue);
+    let finalValue = newValue;
+    // 超出字数时进行截断
+    if (currentCount > wordLimit) {
+      // 逐步截断，直到不超过限制
+      let temp = '';
+      for (let i = 0, w = 0; i < newValue.length && w < wordLimit; i++) {
+        temp += newValue[i];
+        if (countWords(temp) > w) {
+          w = countWords(temp);
+        }
+        if (w > wordLimit) {
+          temp = temp.slice(0, -1);
+          break;
+        }
+      }
+      finalValue = temp;
+      currentCount = countWords(finalValue);
       setError('故事内容已达到2000字限制，请精简内容');
+    } else {
+      setError('');
     }
+    setStory(finalValue);
+    setStoryWordCount(currentCount);
   };
 
   // 添加日志函数
@@ -198,9 +225,17 @@ function App() {
       // 现在result包含pages、statistics和storyTitle
       setPages(result.pages);
       setStoryTitle(result.storyTitle || '您的故事绘本');
+      setAllCharacters(result.allCharacters || {}); // 保存角色信息
+      setArtStyle(result.artStyle || '儿童绘本插画风格'); // 保存艺术风格
       
       addLog(`Story generated with title: ${result.storyTitle || '未命名故事'}`, 'success');
-      addLog('All pages generated successfully', 'success');
+      addLog(`Art style identified: ${result.artStyle}`, 'info');
+      addLog(`Total ${Object.keys(result.allCharacters || {}).length} characters identified`, 'info');
+
+      // 提取统计数据并记录
+      if (result.statistics) {
+        // ... existing code ...
+      }
       
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -240,185 +275,72 @@ function App() {
     logIdCounter.current = 0; // 重置日志计数器
     setIsPaused(false);
     setShowDebugWindow(false); // 隐藏调试窗口
-    setRegeneratingPageIndex(-1); // 重置重新生成状态
   };
 
   // 重新生成单个页面图像
   const regeneratePageImage = async (pageIndex, customPrompt = null) => {
-    if (pageIndex < 0 || pageIndex >= pages.length) {
-      setError('无效的页面索引');
-      return;
-    }
+    addLog(`Regenerating image for page ${pageIndex + 1}...`, 'info');
 
-    if (regeneratingPageIndex !== -1) {
-      addLog('已有页面正在重新生成中，请稍候...', 'warning');
-      return;
-    }
-
-    const currentPage = pages[pageIndex];
-    const userPrompt = customPrompt || currentPage.imagePrompt;
+    // Step 1: Set page status to 'regenerating' to show loading indicator immediately
+    const pagesWithLoading = pages.map((page, index) => {
+      if (index === pageIndex) {
+        return { ...page, status: 'regenerating' };
+      }
+      return page;
+    });
+    setPages(pagesWithLoading);
 
     try {
-      setRegeneratingPageIndex(pageIndex);
-      
-      // 更新页面状态为生成中，并立即更新提示词
-      const updatedPages = [...pages];
-      updatedPages[pageIndex] = {
-        ...currentPage,
-        status: 'generating',
-        error: null,
-        image: null,
-        imagePrompt: userPrompt // 立即更新提示词到状态中
-      };
-      setPages(updatedPages);
+      const pageToRegenerate = pages[pageIndex];
+      const prompt = customPrompt || pageToRegenerate.imagePrompt;
 
-      addLog(`Regenerating image for page ${pageIndex + 1}...`, 'info');
+      // Step 2: Await the image generation
+      const newImageUrl = await generateImageWithImagen(
+        prompt,
+        pageIndex,
+        aspectRatio,
+        pageToRegenerate, // pageData
+        allCharacters,    // allCharacters
+        artStyle          // artStyle
+      );
 
-      // 判断是否为用户自定义的简单提示词（不包含原有的增强信息）
-      const isUserCustomPrompt = userPrompt && userPrompt.length < 200 && 
-                                !userPrompt.includes('IMPORTANT: Show the main character') &&
-                                !userPrompt.includes('Show only these characters') &&
-                                !userPrompt.includes('children\'s book illustration style');
-
-      // 构建最终的增强提示词
-      let finalPrompt = userPrompt;
-      
-      if (isUserCustomPrompt) {
-        // 用户自定义提示词 - 应用内容安全优化和角色一致性增强
-        const { sceneCharacters = [], sceneType = '主角场景', mainCharacter = '', characterType = '' } = currentPage;
-        const artStyle = '儿童绘本插画风格';
-        
-        console.log(`User custom prompt detected for page ${pageIndex + 1}: "${userPrompt}"`);
-        console.log(`Applying character consistency - Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
-        
-        // 应用内容安全转换，确保用户输入的提示词安全友善
-        const safetyReplacements = {
-          // 暴力相关词汇转换
-          '打架': '玩耍', '战斗': '友好竞赛', '愤怒': '专注', '凶恶': '认真',
-          '打斗': '互动', '攻击': '接近', '武器': '工具', '刀': '魔法棒', '剑': '勇士棒',
-          // 恐怖元素转换
-          '可怕': '神秘', '恐怖': '有趣', '吓人': '令人好奇', '鬼': '精灵', '怪物': '奇幻生物',
-          // 负面情绪转换
-          '邪恶': '调皮', '坏': '淘气', '狡猾': '聪明', '阴险': '机智', '仇恨': '误解',
-          // 危险行为转换
-          '危险': '冒险', '伤害': '帮助', '破坏': '改造', '毁灭': '改变'
-        };
-        
-        // 对用户提示词应用安全转换
-        let safeUserPrompt = userPrompt;
-        Object.entries(safetyReplacements).forEach(([unsafe, safe]) => {
-          const regex = new RegExp(unsafe, 'gi');
-          safeUserPrompt = safeUserPrompt.replace(regex, safe);
-        });
-        
-        // 如果提示词被修改，记录日志
-        if (safeUserPrompt !== userPrompt) {
-          console.log(`Applied safety transformations to user prompt: "${userPrompt}" -> "${safeUserPrompt}"`);
-          addLog(`为提高生成成功率，已优化用户提示词中的部分词汇`, 'info');
+      // Step 3: Update page with new image and 'success' status
+      const finalPages = pages.map((page, index) => {
+        if (index === pageIndex) {
+          return {
+            ...page,
+            image: newImageUrl,
+            imagePrompt: prompt,
+            status: 'success',
+            error: null,
+          };
         }
-        
-        // 应用与原有系统相同的角色一致性逻辑，使用安全转换后的提示词
-        if (sceneType === '无角色场景') {
-          finalPrompt = `${safeUserPrompt}. Focus on the scene and environment only, no characters should appear. ${artStyle}.`;
-        } else if (sceneType === '主角场景' && sceneCharacters.includes(mainCharacter?.split(' ')[0])) {
-          // 主角场景 - 应用主角一致性
-          if (pageIndex > 0) {
-            finalPrompt = `${safeUserPrompt}. IMPORTANT: Show the main character - ${mainCharacter}. Maintain consistent character design, same colors, same appearance features. ${artStyle}. Consistent with previous pages.`;
-          } else {
-            finalPrompt = `${safeUserPrompt}. Establish clear character design for the main character - ${mainCharacter}. ${artStyle}. This sets the visual foundation for the story.`;
-          }
-        } else if (sceneType === '配角场景' || sceneType === '群体场景') {
-          // 配角场景 - 只显示指定的配角，排除主角
-          if (sceneCharacters.length > 0) {
-            finalPrompt = `${safeUserPrompt}. Show only these characters: ${sceneCharacters.join(', ')}. Do NOT show the main character (${mainCharacter}) in this scene. ${artStyle}.`;
-          } else {
-            finalPrompt = `${safeUserPrompt}. Focus on the scene with the mentioned characters. Do NOT include the main character in this specific scene. ${artStyle}.`;
-          }
-        } else {
-          // 备用方案 - 添加基础绘本风格
-          finalPrompt = `${safeUserPrompt}. ${artStyle}.`;
-        }
-        
-        // 根据宽高比优化构图描述
-        if (aspectRatio === '9:16') {
-          finalPrompt += ' Vertical composition, portrait orientation, characters positioned for tall frame.';
-        } else if (aspectRatio === '16:9') {
-          finalPrompt += ' Horizontal composition, landscape orientation, wide scene with good use of space.';
-        }
-        
-        // 添加安全友善的氛围描述
-        finalPrompt += ' Safe and welcoming atmosphere, friendly expressions, suitable for children.';
-      }
+        return page;
+      });
+      setPages(finalPages);
+      addLog(`Page ${pageIndex + 1} image regenerated successfully!`, 'success');
 
-      // 调用图像生成API
-      const generateImage = httpsCallable(functions, 'generateImage');
-      
-      // 构建增强的负向提示词，明确排除文字内容
-      const enhancedNegativePrompt = [
-        'text', 'words', 'letters', 'writing', 'signs', 'symbols', 'captions', 'subtitles', 
-        'labels', 'watermarks', 'typography', 'written text', 'readable text', 'book text',
-        'speech bubbles', 'dialogue boxes', 'written words', 'script', 'handwriting',
-        'blurry', 'low quality', 'distorted', 'bad anatomy'
-      ].join(', ');
-      
-      const requestData = {
-        prompt: finalPrompt,
-        pageIndex: pageIndex,
-        aspectRatio: aspectRatio,
-        seed: isUserCustomPrompt ? Math.floor(Math.random() * 10000) : (42 + pageIndex), // 用户自定义使用随机种子
-        maxRetries: 0, // 移除重试，直接失败
-        sampleCount: 1,
-        safetyFilterLevel: 'OFF',
-        personGeneration: 'allow_all',
-        addWatermark: false,
-        negativePrompt: enhancedNegativePrompt
-      };
-
-      console.log('Final enhanced prompt:', finalPrompt);
-      console.log('Is user custom prompt:', isUserCustomPrompt);
-      console.log('Using seed:', requestData.seed);
-
-      const result = await generateImage(requestData);
-
-      if (result.data && result.data.success && result.data.imageUrl) {
-        // 更新成功的页面
-        const finalPages = [...pages];
-        finalPages[pageIndex] = {
-          ...currentPage,
-          image: result.data.imageUrl,
-          imagePrompt: userPrompt, // 保存用户的原始提示词
-          status: 'success',
-          error: null,
-          isPlaceholder: false
-        };
-        setPages(finalPages);
-        addLog(`Page ${pageIndex + 1} image regenerated successfully`, 'success');
-      } else {
-        throw new Error(result.data.error || 'Unknown error');
-      }
     } catch (error) {
       console.error(`Failed to regenerate page ${pageIndex + 1}:`, error);
+      addLog(`Failed to regenerate page ${pageIndex + 1}: ${error.message}`, 'error');
       
-      // 更新失败的页面，但保持新的提示词
-      const errorPages = [...pages];
-      errorPages[pageIndex] = {
-        ...currentPage,
-        status: 'error',
-        error: error.message,
-        image: null,
-        imagePrompt: userPrompt // 即使失败也要保持新提示词
-      };
+      // Step 4: Update page with 'error' status
+      const errorPages = pages.map((page, index) => {
+        if (index === pageIndex) {
+          return {
+            ...page,
+            status: 'error',
+            error: error.message,
+          };
+        }
+        return page;
+      });
       setPages(errorPages);
-      addLog(`Page ${pageIndex + 1} regeneration failed: ${error.message}`, 'error');
-    } finally {
-      setRegeneratingPageIndex(-1);
     }
   };
 
   // 更新页面提示词
   const updatePagePrompt = (pageIndex, newPrompt) => {
-    if (pageIndex < 0 || pageIndex >= pages.length) return;
-    
     const updatedPages = [...pages];
     updatedPages[pageIndex] = {
       ...updatedPages[pageIndex],
@@ -444,6 +366,11 @@ function App() {
     setEditedTitle('');
     setIsEditingTitle(false);
   };
+
+  // 在 useEffect 中初始化 storyWordCount
+  useEffect(() => {
+    setStoryWordCount(countWords(story));
+  }, []);
 
   // 登录/注册界面
   if (!user) {
@@ -529,12 +456,12 @@ function App() {
             
             {/* 字数计数显示 */}
             <div className="character-count">
-              <span className={story.length > 1800 ? 'count-warning' : story.length > 1500 ? 'count-notice' : ''}>
-                {story.length}/2000 字
+              <span className={storyWordCount > 1800 ? 'count-warning' : storyWordCount > 1500 ? 'count-notice' : ''}>
+                {storyWordCount}/2000 字
               </span>
-              {story.length > 1800 && (
+              {storyWordCount > 1800 && (
                 <span className="count-tip">
-                  {story.length >= 2000 ? ' - 已达字数上限' : ` - 还可输入 ${2000 - story.length} 字`}
+                  {storyWordCount >= 2000 ? ' - 已达字数上限' : ` - 还可输入 ${2000 - storyWordCount} 字`}
                 </span>
               )}
             </div>
@@ -683,15 +610,16 @@ function App() {
               )}
             </div>
             
-            <div className="tale-display">
+            <div className="story-pages">
               {pages.map((page, index) => (
                 <PageItem
-                  key={index}
+                  key={page.id || index}
                   page={page}
                   index={index}
+                  allCharacters={allCharacters}
                   onRegenerateImage={regeneratePageImage}
                   onUpdatePrompt={updatePagePrompt}
-                  isGenerating={regeneratingPageIndex === index || loading}
+                  isGenerating={loading && progress.includes(`${index + 1}`)}
                 />
               ))}
             </div>
