@@ -1,48 +1,143 @@
-Use Gemini and Imagen 4 to create auto draw tale book react app.
+# Tale Draw - AI故事绘本生成器 产品需求文档 (PRD)
 
-Here's the app flow:
+## 产品概述
 
-1. User uploads the text of a story.
-2. The app uses Gemini to generate the prompt(JSON format) for Imagen 4 of many pages of the story.
-3. The app uses Imagen 4 to generate a drawing of each page of the story.
-4. The app displays the story(use the same language as input text) and the drawings in a scrollable page.
-5. User can input the numbers of pages of the story, and default is 10 pages.
-6. The gerented tale book can be saved to the firebase storage, and user can reload from the history list.
+Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 Google Gemini 2.5-flash 和 Imagen 3/4 技术，为用户的故事自动生成结构化内容和精美插图。
 
-note:
-1.The drawing should be in the same style of each page.
-2.The role will have a name, so that it can keep the same looking due to the content.
-3.We can use the role's picture for imagen model reference, to gen the role's correct looking.
-4.Content safety optimization to ensure high generation success rate and child-friendly content.
+## 核心功能流程
 
-## Content Safety Requirements:
+### 1. 用户输入与认证
+- **Firebase 认证**：邮箱/密码登录注册系统
+- **故事输入**：支持多语言文本输入（中文、英文、日文等），最大2000字
+- **智能参数配置**：
+  - 页数选择：1-30页（默认6页）
+  - 宽高比选择：1:1, 9:16, 16:9, 3:4, 4:3（默认16:9）
+  - 角色管理：自动提取或手动设置
 
-### 1. Multi-layer Safety Protection
-- **LLM Level**: Gemini automatically converts controversial content to friendly descriptions
-- **Frontend Level**: Real-time safety word replacement for user inputs  
-- **Image Generation Level**: Automatic addition of safe and welcoming atmosphere descriptions
-- **User Interface Level**: Safety tips and guidelines for content creation
+### 2. AI 故事分析与结构化
+**技术栈**：Gemini 2.5-flash 通过 Firebase Functions 调用
+- **智能分析**：故事结构、关键情节、角色信息
+- **内容安全优化**：自动转换不当内容为儿童友好内容
+- **角色一致性管理**：提取角色外观、服装、性格特征
+- **页面分配**：智能分配故事内容到指定页数
 
-### 2. Safety Transformations
-- Violence → Friendly competition or discussion
-- Horror elements → Mysterious adventures or interesting challenges
-- Negative emotions → Confusion or need for help
-- Dangerous activities → Safe exploration under supervision
-- Stereotypes → Inclusive and diverse descriptions
+### 3. 图像生成系统
+**技术栈**：Imagen 3/4 通过 Firebase Functions 调用
+- **多版本支持**：支持 Imagen 3 和 Imagen 4 两个版本
+- **智能场景识别**：
+  - 无角色场景：纯环境描述
+  - 主角场景：突出主要角色
+  - 配角场景：展示次要角色
+  - 群体场景：多角色互动
+- **风格一致性**：使用种子值确保全书风格统一
+- **安全过滤**：内容安全检查，确保儿童友好
 
-### 3. Child-Friendly Optimization
-- All generated content suitable for children's books
-- Friendly expressions and warm colors emphasized
-- Safe and welcoming atmosphere in all images
-- Inclusive character descriptions avoiding stereotypes
+### 4. 交互式编辑功能
+- **实时预览**：故事页面即时显示
+- **工作流程状态**：显示工作流程日志，可在工作流程面板暂停或停止生成任务
+- **图像重新生成**：单页图像重新生成功能
+- **提示词编辑**：用户可编辑和优化图像生成提示词
+- **状态管理**：生成中、成功、失败状态可视化
 
-implement detail:
-1.Only use react app, no need server.
-2.Use firebase Functions to invoke GCP API, so we need adopt authentication(email/password) of firebase.
-3.Use firebase storage to store the drawings.
-4.The firebase resource is in the firebaseresouce file.
-5.Use npx to run firebase tools.
-6.Use LLM model: gemini-2.5-flash, Imagen 3
+### 5. 导出与保存
+- **多格式导出**：
+  - HTML：完整网页格式，包含内嵌图像
+  - PPTX：PowerPoint演示文稿格式
+- **云存储**：Firebase Storage 自动保存生成的图像
+- **数据持久化**：支持 Cloud Storage 和 Firestore 两种存储模式
+
+## 技术架构
+
+### 前端 (React)
+```
+用户界面组件：
+├── App.js (主应用逻辑)
+├── components/
+│   ├── PageSelector.js (页数选择器)
+│   ├── AspectRatioSelector.js (宽高比选择器)
+│   ├── CharacterManager.js (角色管理器)
+│   └── PageItem.js (页面展示组件)
+├── api.js (API调用封装)
+├── config.js (前端配置管理)
+└── firebase.js (Firebase初始化)
+```
+
+### 后端 (Firebase Functions)
+```
+云函数服务：
+├── generateTale (故事结构生成)
+├── getTaleData (获取故事数据)
+├── generateImage (Imagen 3图像生成)
+├── generateImageV4 (Imagen 4图像生成)
+├── generateImageBatch (批量图像生成)
+├── extractCharacter (角色信息提取)
+└── healthCheck (健康检查)
+```
+
+### 数据流程
+```
+用户输入 → Firebase Auth → Gemini分析 → 结构化数据 → 
+Cloud Storage → 前端展示 → Imagen生成 → Firebase Storage → 最终展示
+```
+
+## 内容安全特性
+
+### 多层安全保护
+1. **LLM层面**：Gemini自动内容过滤和友好转换
+2. **提示词层面**：内置安全词汇替换机制
+3. **图像生成层面**：安全过滤设置和负向提示词
+4. **输出层面**：儿童友好内容验证
+
+### 安全转换规则
+- 暴力内容 → 友好竞赛或讨论
+- 恐怖元素 → 神秘冒险或有趣挑战
+- 负面情绪 → 困惑或需要帮助
+- 危险活动 → 安全的监督下探索
+- 刻板印象 → 包容性和多样化描述
+
+## 用户体验特性
+
+### 实时反馈系统
+- **进度追踪**：详细的生成步骤显示
+- **日志系统**：完整的操作日志记录
+- **状态指示**：清晰的加载、成功、错误状态
+- **错误处理**：友好的错误信息和重试机制
+
+### 智能优化
+- **自动重试**：API调用失败自动重试机制
+- **内容压缩**：gzip压缩减少存储空间
+- **缓存策略**：智能缓存提升性能
+- **响应式设计**：支持多设备访问
+
+## 配置与部署
+
+### 环境配置
+- **开发环境**：Cloud Storage模式，快速迭代
+- **生产环境**：Firestore模式，数据持久化
+- **API配置**：统一的配置管理系统
+- **安全设置**：CORS配置和认证检查
+
+### 性能优化
+- **函数配置**：2GiB内存，15分钟超时
+- **并发控制**：智能并发限制避免API限制
+- **错误恢复**：指数退避重试策略
+- **资源管理**：自动清理临时文件
+
+## 版本信息
+- **当前版本**：v0.2.2
+- **支持的AI模型**：
+  - Gemini 2.5-flash (故事分析)
+  - Imagen 3.0-generate-002 (图像生成)
+  - Imagen 4.0-generate-preview-06-06 (高质量图像生成)
+- **部署平台**：Firebase (Functions + Storage + Auth)
+- **前端框架**：React 18+ with Create React App
+
+## 未来规划
+1. **用户历史记录**：用户历史记录功能，便于用户查看和管理自己的绘本
+2. **角色形象生成**：角色形象预设功能，便于多个绘本统一角色
+3. **模板系统**：预设故事模板和风格
+4. **移动应用**：React Native移动端适配
+5. **多语言支持**：多语言支持，便于用户使用不同语言的绘本
 
 
 

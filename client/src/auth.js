@@ -1,8 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 
-// GCP项目配置
-const PROJECT_ID = 'ai-app-taskforce';
-const LOCATION = 'us-central1';
+// 导入配置
+import { PROJECT_ID, LOCATION } from './config';
 
 // OAuth2 Client配置
 const CLIENT_ID = 'your-oauth-client-id'; // 需要在GCP Console创建

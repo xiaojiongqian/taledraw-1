@@ -7,7 +7,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "lint": "echo 'skip lint'"
+    "lint": "echo \"lint command disabled\"",
+    "predeploy": "npm run lint"
   },
   "engines": {
     "node": "22"
@@ -16,9 +17,11 @@
   "dependencies": {
     "firebase-admin": "^12.0.0",
     "firebase-functions": "^6.3.2",
-    "google-auth-library": "^9.7.0"
+    "google-auth-library": "^9.7.0",
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
+    "eslint": "^8.14.0",
     "firebase-functions-test": "^3.1.0"
   },
   "private": true

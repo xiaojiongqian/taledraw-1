@@ -1,3 +1,51 @@
+/* =================================
+   Button Standardization
+   ================================= */
+
+/* Base button style */
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: normal;
+  transition: background-color 0.2s ease;
+  white-space: nowrap; /* Prevent text wrapping */
+}
+
+/* Primary Button (Blue) */
+.btn-primary {
+  background-color: #4a90e2; /* Base blue from generate button */
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #357ABD; /* Darker blue on hover */
+}
+
+/* Secondary Button (Gray) */
+.btn-secondary {
+  background-color: #e0e0e0; /* Base gray from clear button */
+  color: #333;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #c7c7c7; /* Darker gray on hover */
+}
+
+/* Disabled state for all buttons */
+.btn:disabled {
+  background-color: #ccc;
+  color: #888;
+  cursor: not-allowed;
+}
+
+
+/* =================================
+   Original App Styles
+   ================================= */
+
 /* 全局样式重置 */
 * {
   margin: 0;
@@ -304,42 +352,81 @@ body {
 
 .input-actions {
   display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
+  gap: 10px;
+  margin-top: 20px;
 }
 
-.generate-button, .clear-button {
-  padding: 1rem 2rem;
+.save-container {
+  position: relative;
+  display: inline-block;
+}
+
+.save-options {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  bottom: 100%; /* Position above the save button */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  z-index: 100;
+  margin-bottom: 8px; /* Space between menu and button */
+  overflow: hidden; /* Ensures border-radius is respected by children */
+  width: 100px; /* Set a specific width */
+}
+
+.save-options .btn-save-option {
+  background-color: #fff;
+  color: #555;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
+  padding: 8px 16px;
+  text-align: center;
+  width: 100%;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  font-size: 0.9em;
+  transition: background-color 0.2s, color 0.2s;
 }
 
-.generate-button {
-  background: #2196F3;
-  color: white;
-  flex: 1;
+.save-options .btn-save-option:first-child {
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.generate-button:hover:not(:disabled) {
-  background: #1976D2;
-}
-
-.generate-button:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.clear-button {
-  background: var(--neutral-button-bg);
+.save-options .btn-save-option:hover {
+  background-color: #007bff;
   color: white;
 }
 
-.clear-button:hover:not(:disabled) {
-  background: var(--neutral-button-hover);
+.save-options .btn-save-option:last-child {
+  border-bottom: none;
+}
+
+.input-actions button {
+  /* Specific overrides if any, but most styles are now in .btn classes */
+  /* The flex-grow that caused stretching is removed. */
+  padding: 12px 20px; /* Slightly larger padding for main action buttons */
+  font-size: 16px;
+}
+
+/* These classes are now deprecated and will be removed from JSX. */
+/* The .btn, .btn-primary, .btn-secondary classes will be used instead. */
+.generate-button, .clear-button, .save-button {
+  /* Styles are now handled by .btn, .btn-primary, .btn-secondary */
+  /* Remove old rules to avoid conflicts */
+}
+
+.generate-button:hover:not(:disabled),
+.clear-button:hover:not(:disabled),
+.save-button:hover:not(:disabled) {
+  /* Hover effects are now handled by .btn-primary and .btn-secondary */
+  transform: none; /* Explicitly remove transform */
+}
+
+.input-actions button:disabled {
+  /* Handled by .btn:disabled */
+  transform: none;
 }
 
 /* 加载状态 */
@@ -378,7 +465,7 @@ body {
   gap: 0.8rem;
 }
 
-.pause-button, .abort-button {
+.abort-button {
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 8px;
@@ -386,23 +473,6 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.3s ease;
-}
-
-.pause-button {
-  background: #2196F3;
-  color: white;
-}
-
-.pause-button:hover:not(:disabled) {
-  background: #1976D2;
-}
-
-.pause-button:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.abort-button {
   background: var(--neutral-button-bg);
   color: white;
 }
@@ -446,6 +516,31 @@ body {
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.error-summary {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.error-title {
+  font-weight: 600;
+  color: #dc2626;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.error-details {
+  color: #991b1b;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem;
+  border-radius: 4px;
 }
 
 .logs-content {
@@ -737,10 +832,37 @@ body {
   background: #1976D2;
 }
 
+.continue-generation-button {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-right: 1rem;
+}
+
+.continue-generation-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+}
+
+.continue-generation-button:disabled {
+  background: #ccc;
+  color: #888;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* 消息样式 */
 .error-message {
-  background: linear-gradient(135deg, #ff6b6b, #ff5252);
-  color: white;
+  color: #D32F2F; /* a nice red for errors */
+  background-color: #FFCDD2; /* light red background */
   padding: 1rem;
   border-radius: 12px;
   margin-top: 1rem;

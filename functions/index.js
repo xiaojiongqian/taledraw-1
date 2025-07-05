@@ -1,23 +1,133 @@
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2/options');
 const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 const { GoogleAuth } = require('google-auth-library');
-// 使用Node.js 22内置的全局fetch，无需导入
+const zlib = require('zlib');
+const stream = require('stream');
+const cors = require('cors')({origin: true});
+
+// 导入集中配置
+const {
+  PROJECT_ID,
+  LOCATION,
+  STORAGE_MODE,
+  API_CONFIG,
+  STORAGE_CONFIG,
+  CORS_CONFIG,
+  PROMPTS,
+  UTILS
+} = require('./config');
 
 // 设置全局选项
-setGlobalOptions({ region: 'us-central1' });
+setGlobalOptions({ region: LOCATION });
 
 // 初始化Firebase Admin
 admin.initializeApp();
+const db = admin.firestore();
 
-// GCP配置
-const PROJECT_ID = 'ai-app-taskforce';
-const LOCATION = 'us-central1'; // 使用支持Gemini的主要区域
+console.log(`Storage mode: ${STORAGE_MODE}`);
+console.log(`Storage bucket: ${STORAGE_CONFIG.DEFAULT_BUCKET}`);
+
+// 通用存储策略
+class TaleStorageStrategy {
+  static async saveTaleData(userId, taleData) {
+    const taleId = admin.firestore().collection('tmp').doc().id;
+    if (STORAGE_MODE === 'firestore') {
+      return this.saveToFirestore(userId, taleId, taleData);
+    }
+    return this.saveToCloudStorage(userId, taleId, taleData);
+  }
+
+  static async getTaleData(userId, taleId) {
+    if (STORAGE_MODE === 'firestore') {
+      return this.getFromFirestore(userId, taleId);
+    }
+    return this.getFromCloudStorage(userId, taleId);
+  }
+
+  // Firestore implementation (fallback)
+  static async saveToFirestore(userId, taleId, taleData) {
+    const docRef = admin.firestore().collection('users').doc(userId).collection('tales').doc(taleId);
+    await docRef.set({ ...taleData, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return { success: true, taleId, storageMode: 'firestore' };
+  }
+
+  static async getFromFirestore(userId, taleId) {
+    const docRef = admin.firestore().collection('users').doc(userId).collection('tales').doc(taleId);
+    const doc = await docRef.get();
+    if (!doc.exists) throw new HttpsError('not-found', 'Tale not found.');
+    return doc.data();
+  }
+
+  // Cloud Storage implementation (preferred for large data)
+  static async saveToCloudStorage(userId, taleId, taleData) {
+    const bucketName = UTILS.getBucketName();
+    const bucket = admin.storage().bucket(bucketName);
+    const fileName = UTILS.buildFilePath(userId, taleId);
+    const file = bucket.file(fileName);
+
+    const jsonString = JSON.stringify(taleData);
+    // Use the synchronous, memory-intensive gzip. Requires sufficient function memory.
+    const gzippedData = zlib.gzipSync(Buffer.from(jsonString));
+
+    await file.save(gzippedData, {
+      metadata: {
+        contentType: 'application/gzip',
+        contentEncoding: 'gzip',
+      },
+    });
+    return { success: true, taleId, storageMode: 'cloud_storage' };
+  }
+
+  static async getFromCloudStorage(userId, taleId) {
+    const bucketName = UTILS.getBucketName();
+    const bucket = admin.storage().bucket(bucketName);
+    const fileName = UTILS.buildFilePath(userId, taleId);
+    const file = bucket.file(fileName);
+
+    const [exists] = await file.exists();
+    if (!exists) throw new HttpsError('not-found', 'Tale not found in Cloud Storage.');
+
+    try {
+      const [gzippedBuffer] = await file.download();
+      console.log(`Downloaded file size: ${gzippedBuffer.length} bytes`);
+      
+      // Check if the buffer is actually gzipped by checking magic number
+      if (gzippedBuffer.length < 2 || gzippedBuffer[0] !== 0x1f || gzippedBuffer[1] !== 0x8b) {
+        console.log('File does not appear to be gzipped, trying to parse as plain JSON');
+        // If not gzipped, try to parse as plain JSON
+        const jsonString = gzippedBuffer.toString();
+        return JSON.parse(jsonString);
+      }
+      
+      const jsonString = zlib.gunzipSync(gzippedBuffer).toString();
+      return JSON.parse(jsonString);
+    } catch (error) {
+      console.error('Error reading from Cloud Storage:', error);
+      console.error(`File: ${fileName}, Error: ${error.message}`);
+      
+      // If gunzip fails, try to read as plain text
+      if (error.code === 'Z_DATA_ERROR') {
+        console.log('Gunzip failed, attempting to read as plain JSON');
+        try {
+          const [plainBuffer] = await file.download();
+          const jsonString = plainBuffer.toString();
+          return JSON.parse(jsonString);
+        } catch (parseError) {
+          console.error('Failed to parse as plain JSON:', parseError);
+          throw new HttpsError('internal', 'Tale data is corrupted and cannot be read.');
+        }
+      }
+      
+      throw new HttpsError('internal', `Failed to read tale data: ${error.message}`);
+    }
+  }
+}
 
 // 全局初始化Google Auth客户端，以供所有函数复用
 const auth = new GoogleAuth({
-  scopes: ['https://www.googleapis.com/auth/cloud-platform']
+  scopes: 'https://www.googleapis.com/auth/cloud-platform'
 });
 
 // 重试辅助函数 - 指数退避算法（服务端版本）
@@ -89,7 +199,7 @@ exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
   const { 
     prompt, 
     pageIndex = 0, 
-    aspectRatio = '16:9', 
+    aspectRatio = '1:1', 
     maxRetries = 2, 
     referenceImageUrl, 
     seed = 42,
@@ -120,7 +230,7 @@ exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
     '9:16': '9:16'
   };
   
-  const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '16:9';
+      const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '1:1';
 
   // 创建Imagen API调用函数
   const callImagenAPI = async (accessToken) => {
@@ -485,6 +595,14 @@ exports.healthCheck = onCall({ region: 'us-central1' }, () => {
   };
 });
 
+// 获取故事数据函数
+exports.getTaleData = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  const { taleId } = request.data;
+  if (!taleId) throw new HttpsError('invalid-argument', 'Tale ID is required.');
+  return await TaleStorageStrategy.getTaleData(request.auth.uid, taleId);
+});
+
 // 注意：原 generateStoryPages 函数已移除，现在直接使用优化的 generateTale 函数
 
 // 角色提取函数
@@ -507,41 +625,12 @@ exports.extractCharacter = onCall({ region: 'us-central1' }, async (request) => 
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
-    // 创建角色提取的提示词
-    const characterExtractionPrompt = `
-分析以下故事，提取最主要的一个角色信息：
-
-故事内容：
-${story.trim()}
-
-要求：
-1. 识别故事中最重要的主角
-2. 生成详细的外观描述，包括年龄、性别、外貌特征、穿着、配饰等
-3. 确保描述足够详细以保持视觉一致性
-4. 使用与故事相同的语言回复
-5. **重要：角色应该适合儿童绘本**
-
-**内容安全指导：**
-在描述角色外观时，请确保：
-- 避免任何可能被认为是刻板印象的特征描述
-- 如果原故事中角色有负面特征，转化为中性或正面的外观描述
-- 强调友善、温和的面部表情和身体语言
-- 服装和配饰应该适合儿童观看，避免过于复杂或可能引起争议的元素
-- 确保描述包容性强，适合多元化的读者群体
-
-请返回JSON格式：
-{
-  "name": "角色名称",
-  "description": "详细的外观描述，包括年龄、性别、外貌、穿着等特征"
-}
-
-只返回JSON，不要其他内容。
-`;
-
-    const geminiResponse = await callGemini(accessToken.token, characterExtractionPrompt, story);
+    // 使用配置文件中的角色提取提示词
+    const geminiResponse = await callGemini(accessToken.token, PROMPTS.CHARACTER_EXTRACTION, story);
     const characterData = JSON.parse(geminiResponse);
     
     return {
+      success: true,
       name: characterData.name || '主角',
       description: characterData.description || '故事中的主要角色'
     };
@@ -552,234 +641,108 @@ ${story.trim()}
   }
 });
 
+// The one and only function to call Gemini
 async function callGemini(accessToken, systemPrompt, story) {
-  const model = 'gemini-2.5-flash';
-  const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${model}:generateContent`;
+  const model = API_CONFIG.GEMINI_MODEL;
+  const apiUrl = UTILS.buildApiUrl(model);
+  
+  console.log(`Preparing Gemini API request for model: ${model}`);
+  console.log(`Story length: ${story.length} characters`);
+  console.log(`System prompt length: ${systemPrompt.length} characters`);
 
-  try {
-    if (!accessToken) {
-      throw new Error('Access token was not provided to callGemini.');
-    }
+  const requestBody = UTILS.buildGeminiRequest(story, systemPrompt);
 
-    const requestBody = {
-      contents: [{
-        role: "user",
-        parts: [{ text: story }]
-      }],
-      systemInstruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      generationConfig: {
-        temperature: 0.8,
-        topP: 0.95,
-        maxOutputTokens: 32768, // 增加输出token限制以利用Gemini 2.5 Flash的能力
-        responseMimeType: "application/json"
-      }
-    };
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(requestBody)
+  });
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API error:', { status: response.status, body: errorText });
-      throw new Error(`Gemini API failed with status ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts[0].text) {
-      console.error('Invalid Gemini API response structure:', JSON.stringify(data, null, 2));
-      throw new Error('Invalid or empty response structure from Gemini API.');
-    }
-
-    const generatedText = data.candidates[0].content.parts[0].text;
-    console.log('Successfully received structured data from Gemini 2.5 Flash.');
-    return generatedText;
-
-  } catch (error) {
-    console.error('Error in callGemini function:', error);
-    throw new HttpsError('internal', `The call to Gemini API failed: ${error.message}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Gemini API call failed with status ${response.status}:`, errorText);
+    throw new Error(`Gemini API failed with status ${response.status}`);
   }
+
+  const data = await response.json();
+  console.log('Full Gemini API response:', JSON.stringify(data, null, 2));
+  
+  // Check for safety filter blocks or other issues
+  if (data.candidates && data.candidates.length > 0) {
+    const candidate = data.candidates[0];
+    console.log('First candidate:', JSON.stringify(candidate, null, 2));
+    
+    // Check if content was blocked by safety filters
+    if (candidate.finishReason === 'SAFETY') {
+      console.error('Content blocked by safety filters:', candidate.safetyRatings);
+      throw new Error('Content was blocked by Gemini safety filters. Please try a different story.');
+    }
+    
+    // Check if content was blocked for other reasons
+    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+      console.error('Content generation stopped with reason:', candidate.finishReason);
+      throw new Error(`Content generation stopped: ${candidate.finishReason}`);
+    }
+  }
+  
+  const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!generatedText) {
+    console.error('Invalid or empty response structure from Gemini API:', JSON.stringify(data, null, 2));
+    console.error('Candidates array:', data.candidates);
+    console.error('Content path:', data.candidates?.[0]?.content);
+    console.error('Parts path:', data.candidates?.[0]?.content?.parts);
+    throw new Error('Invalid or empty content from Gemini API.');
+  }
+  return generatedText;
 }
 
-exports.generateTale = onCall({
-  region: 'us-central1',
-  timeoutSeconds: 540,
-  memory: '1GiB'
-}, async (request) => {
+exports.generateTale = onCall(UTILS.buildFunctionConfig('2GiB'), async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated to generate a tale.');
   }
 
-  const { story, pageCount = 10, aspectRatio = '16:9' } = request.data;
-  console.log('Received generation request:', {
-    userId: request.auth.uid,
-    storyLength: story.length,
-    pageCount,
-    aspectRatio
-  });
+  const { story, pageCount = 10 } = request.data;
 
-  const systemPrompt = `
-You are a professional children's storybook editor and creative assistant. Your task is to transform a user-submitted story into a complete ${pageCount}-page illustrated storybook with consistent character design and child-friendly content.
-
-## WORKFLOW OVERVIEW
-
-### STEP 1: GLOBAL STORY ANALYSIS
-Analyze the complete story structure:
-- Assess total story length and complexity
-- Identify key plot points and turning points
-- Map story arc: beginning → development → climax → resolution
-- Catalog all important characters and settings
-- Ensure NO content will be omitted (cover 100% of original story)
-
-### STEP 2: CHARACTER CONSISTENCY MANAGEMENT
-For EACH main character appearing in the story:
-- Create detailed character sheet with physical appearance (hair, eyes, build, age, distinctive features)
-- Define consistent clothing/attire description
-- Note personality traits that affect visual representation
-- Ensure descriptions work across all cultural contexts
-- These descriptions will be referenced in every image prompt featuring that character
-
-### STEP 3: CONTENT SAFETY OPTIMIZATION
-Transform any potentially problematic content using child-friendly alternatives:
-- Violence/conflict → "friendly competition" or "discussion to resolve differences"
-- Horror/scary elements → "mysterious adventure" or "interesting challenge"
-- Negative emotions → "confusion" or "need for help"
-- Dangerous activities → "safe exploration under adult supervision"
-- Cultural stereotypes → inclusive, diverse descriptions
-**Goal**: Maintain story essence while ensuring high image generation success rate
-
-### STEP 4: PAGE DISTRIBUTION STRATEGY
-Distribute content across ${pageCount} pages ensuring:
-- Balanced content per page (avoid front-loaded or back-loaded distribution)
-- Complete story coverage (no important plot omissions)
-- No repetitive or filler content
-- Logical narrative flow and pacing
-- Each page contributes meaningfully to the story
-
-### STEP 5: ART STYLE IDENTIFICATION
-Determine the most appropriate visual style based on:
-- Story genre and mood
-- Target age group
-- Cultural context
-- Character types (human/animal/fantasy)
-
-## OUTPUT REQUIREMENTS
-
-Return a single valid JSON object with this exact structure:
-
-{
-  "storyTitle": "Creative, engaging title in the same language as input story",
-  "artStyle": "Specific art style description (e.g., 'children's book watercolor illustration', 'cartoon style digital art')",
-  "storyAnalysis": {
-    "totalLength": "short|medium|long",
-    "keyPlots": ["plot point 1", "plot point 2", "..."],
-    "storyStructure": {
-      "beginning": "beginning summary",
-      "development": "development summary", 
-      "climax": "climax summary",
-      "ending": "ending summary"
-    }
-  },
-  "allCharacters": {
-    "Character Name 1": {
-      "appearance": "Detailed physical description including age, build, facial features, hair, distinctive characteristics",
-      "clothing": "Typical attire, accessories, colors, style",
-      "personality": "Key personality traits that affect visual representation (e.g., confident posture, shy demeanor)"
-    },
-    "Character Name 2": {
-      "appearance": "...",
-      "clothing": "...",
-      "personality": "..."
-    }
-  },
-  "pages": [
-    {
-      "pageNumber": 1,
-      "title": "Brief page title in same language as story (3-8 words)",
-      "text": "Page content in same language as input story, ensuring story completeness",
-      "sceneType": "Brief setting description (e.g., 'enchanted forest', 'cozy kitchen')",
-      "sceneCharacters": ["Character names present in this scene"],
-      "imagePrompt": "Detailed English prompt starting with the identified art style. Include specific character descriptions from character sheets for any characters present. Describe scene, actions, expressions, mood. End with: ', children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'",
-      "scenePrompt": "Scene/setting portion of the imagePrompt",
-      "characterPrompts": "Character description portion of the imagePrompt"
-    }
-  ]
-}
-
-## CRITICAL REQUIREMENTS
-- Use the SAME LANGUAGE as the input story for all text content (title, page text)
-- Use ENGLISH for imagePrompt, scenePrompt, characterPrompts (for optimal image generation)
-- Include ALL story content across pages (no omissions)
-- Maintain character visual consistency through detailed character sheets
-- Apply content safety transformations while preserving story meaning
-- Ensure each page has unique, meaningful content (no filler or repetition)
-
-## EXAMPLE CHARACTER SHEET
-"Leo": {
-  "appearance": "An 8-year-old boy with messy brown curly hair, bright green eyes, freckles across his nose, medium build for his age, cheerful facial expression",
-  "clothing": "Red and white striped t-shirt, blue denim shorts, white sneakers with blue laces, small brown backpack",
-  "personality": "Curious and adventurous, confident posture, tends to lean forward when interested, expressive hand gestures"
-}
-
-Analyze this story and transform it according to the above requirements:
-
-${story}
-`;
+  // 使用配置文件中的故事生成提示词
+  const systemPrompt = PROMPTS.STORY_GENERATION(pageCount);
 
   try {
-    // 在主函数入口处获取一次Token
+    console.log('Starting tale generation process...');
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
+    if (!accessToken?.token) {
+      throw new HttpsError('internal', 'Failed to acquire access token.');
+    }
 
-    if (!accessToken || !accessToken.token) {
-      throw new HttpsError('internal', 'Failed to acquire access token for tale generation.');
+    console.log('Calling Gemini API for story analysis and structure generation...');
+    const startTime = Date.now();
+    const geminiResponseText = await callGemini(accessToken.token, systemPrompt, story);
+    const endTime = Date.now();
+    console.log(`Gemini API call completed in ${(endTime - startTime) / 1000} seconds`);
+    const taleData = JSON.parse(geminiResponseText);
+
+    if (!taleData || !taleData.pages) {
+        throw new Error("Invalid JSON structure from Gemini, 'pages' field is missing.");
     }
     
-    const geminiResponse = await callGemini(accessToken.token, systemPrompt, story);
-    const taleData = JSON.parse(geminiResponse);
-
-    // Validate the response structure
-    if (!taleData.pages || !Array.isArray(taleData.pages)) {
-      throw new Error('Invalid pages structure in Gemini response');
-    }
-
-    console.log('Story generation successful:', {
-      storyTitle: taleData.storyTitle,
-      pages: taleData.pages.length,
-      artStyle: taleData.artStyle,
-      characterCount: taleData.allCharacters ? Object.keys(taleData.allCharacters).length : 0
-    });
-
-    return {
-      pages: taleData.pages || [],
-      storyTitle: taleData.storyTitle || 'Untitled Story',
-      artStyle: taleData.artStyle || 'children\'s book illustration',
-      allCharacters: taleData.allCharacters || {},
-      storyAnalysis: taleData.storyAnalysis || {},
-      aspectRatio: aspectRatio,
-      success: true,
-      generatedAt: new Date().toISOString()
-    };
+    const result = await TaleStorageStrategy.saveTaleData(request.auth.uid, taleData);
+    console.log('Tale generation and storage successful:', result);
+    return result;
 
   } catch (error) {
-    console.error('Error in generateTale:', error);
-    throw new HttpsError('internal', 'Failed to generate tale: ' + error.message);
+    console.error('Error in generateTale function:', error);
+    // Ensure we throw an HttpsError for the client to handle
+    if (error instanceof HttpsError) {
+        throw error;
+    }
+    throw new HttpsError('internal', 'An unexpected error occurred during tale generation: ' + error.message);
   }
 });
 
 // ========== Imagen 4 专用函数组 ========== //
-
-const IMAGEN4_PROJECT_ID = 'ai-app-taskforce';
-const IMAGEN4_LOCATION = 'us-central1';
-const IMAGEN4_MODEL = 'imagen-4.0-generate-preview-06-06';
 
 /**
  * 专用函数组：使用Imagen 4生成图像
@@ -788,81 +751,44 @@ const IMAGEN4_MODEL = 'imagen-4.0-generate-preview-06-06';
  * - 支持一致的角色生成
  * - 更好的提示词理解能力
  * - 更高的图像质量
+ * - 统一使用当前项目配置
  */
 exports.generateImageV4 = onCall(
-  {
-    region: "us-central1", //  Imagen 4 专用
-    timeoutSeconds: 540,
-    memory: "4GB",
-    minInstances: 0,
-    concurrency: 1, // 根据需要调整并发
-  },
+  { region: 'us-central1' },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError("unauthenticated", "User must be authenticated");
+      throw new HttpsError('unauthenticated', 'User must be authenticated');
     }
 
     const {
       prompt,
-      pageIndex = 0,
-      aspectRatio = '16:9',
-      maxRetries = 2,
-      seed = 42,
+      pageIndex,
+      aspectRatio = "1:1",
+      seed = 1,
       sampleCount = 1,
-      safetyFilterLevel = 'OFF',
-      personGeneration = 'allow_all',
-      addWatermark = false,
-      negativePrompt
+      safetyFilterLevel = 'block_most',
+      personGeneration = 'allow_adult',
+      addWatermark = false
     } = request.data;
 
-    console.log('[generateImageV4] request.data:', JSON.stringify(request.data));
-
-    if (!prompt) {
-      console.error('[generateImageV4] prompt is missing!');
-      throw new HttpsError('invalid-argument', 'Prompt is required');
-    }
-
-    // 将用户友好的比例转换为Imagen API支持的格式
-    const aspectRatioMapping = {
-      '16:9': '16:9',
-      '9:16': '9:16',
-      '1:1': '1:1',
-      '3:4': '3:4',
-      '4:3': '4:3'
-    };
-    const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '16:9';
-
-    // 构建Imagen 4 API调用
     const callImagen4API = async (accessToken) => {
-      try {
-        if (!accessToken) {
-          throw new Error('Access token was not provided to callImagen4API.');
-        }
+      const apiUrl = UTILS.buildApiUrl(API_CONFIG.IMAGEN4_MODEL, 'predict');
+      const instance = { prompt };
+      const parameters = {
+        aspectRatio,
+        seed,
+        sampleCount,
+        safetyFilterLevel,
+        personGeneration,
+        addWatermark
+      };
 
-        const apiUrl = `https://${IMAGEN4_LOCATION}-aiplatform.googleapis.com/v1/projects/${IMAGEN4_PROJECT_ID}/locations/${IMAGEN4_LOCATION}/publishers/google/models/${IMAGEN4_MODEL}:predict`;
-        const instance = { prompt };
-        const parameters = {
-          sampleCount: Math.min(Math.max(1, sampleCount), 4),
-          safetyFilterLevel: safetyFilterLevel,
-          addWatermark: addWatermark
-        };
-        const promptLower = prompt.toLowerCase();
-        const hasPersonKeywords = /person|people|man|woman|boy|girl|child|adult|human|character|protagonist|hero|heroine/.test(promptLower);
-        if (hasPersonKeywords) {
-          parameters.personGeneration = personGeneration || 'allow_all';
-        }
-        if (seed && typeof seed === 'number') {
-          parameters.seed = seed;
-        }
-        if (aspectRatio && aspectRatio !== '1:1') {
-          parameters.aspectRatio = imagenAspectRatio;
-        }
-        const requestBody = {
-          instances: [instance],
-          parameters: parameters
-        };
-        console.log('[generateImageV4] API URL:', apiUrl);
-        console.log('[generateImageV4] requestBody:', JSON.stringify(requestBody));
+      const requestBody = {
+        instances: [instance],
+        parameters: parameters,
+      };
+
+      try {
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -871,8 +797,10 @@ exports.generateImageV4 = onCall(
           },
           body: JSON.stringify(requestBody)
         });
+
         const responseText = await response.text();
         console.log('[generateImageV4] Imagen 4 API raw response:', responseText);
+
         if (!response.ok) {
           let errorMessage = `Imagen 4 API failed: ${response.status}`;
           errorMessage += ` - ${responseText}`;
@@ -880,9 +808,11 @@ exports.generateImageV4 = onCall(
           error.status = response.status;
           throw error;
         }
+
         if (!responseText || responseText.trim() === '') {
           throw new Error('Empty response from Imagen 4 API');
         }
+
         let data;
         try {
           data = JSON.parse(responseText);
@@ -890,14 +820,17 @@ exports.generateImageV4 = onCall(
           console.error('[generateImageV4] Failed to parse Imagen 4 API response as JSON:', responseText);
           throw new Error(`Invalid JSON response from Imagen 4 API: ${parseError.message}`);
         }
+
         if (data.error) {
           console.error('[generateImageV4] Imagen 4 API returned error:', data.error);
           throw new Error(`Imagen 4 API error: ${JSON.stringify(data.error)}`);
         }
+
         if (!data.predictions || !data.predictions[0]) {
           console.error('[generateImageV4] Invalid response structure from Imagen 4 API:', data);
           throw new Error('Invalid response structure from Imagen 4 API - no predictions. Full response: ' + JSON.stringify(data));
         }
+
         const prediction = data.predictions[0];
         if (!prediction.bytesBase64Encoded) {
           throw new Error('No image data in Imagen 4 API response');
@@ -931,12 +864,14 @@ exports.generateImageV4 = onCall(
       }
 
       const base64Data = await callImagen4API(accessToken.token);
+
       // 上传到Firebase Storage
-      const bucketName = `${IMAGEN4_PROJECT_ID}.firebasestorage.app`;
+      const bucketName = UTILS.getBucketName();
       const bucket = admin.storage().bucket(bucketName);
       const fileName = `tale-images-v4/${request.auth.uid}/${Date.now()}_page_${pageIndex}.jpg`;
       const file = bucket.file(fileName);
       const imageBuffer = Buffer.from(base64Data, 'base64');
+
       await file.save(imageBuffer, {
         metadata: {
           contentType: 'image/jpeg',
@@ -947,13 +882,11 @@ exports.generateImageV4 = onCall(
           }
         }
       });
+
       await file.makePublic();
       const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-      return {
-        imageUrl: publicUrl,
-        pageIndex: pageIndex,
-        success: true
-      };
+      return { imageUrl: publicUrl, pageIndex: pageIndex, success: true };
+
     } catch (error) {
       let errorMessage = `Failed to generate image (Imagen 4): ${error.message}`;
       if (error.status) {
@@ -974,39 +907,365 @@ exports.generateImageBatchV4 = onCall(
     if (!prompts || !Array.isArray(prompts)) {
       throw new HttpsError('invalid-argument', 'Prompts array is required');
     }
+
     try {
       const results = [];
       for (let i = 0; i < prompts.length; i++) {
         try {
           const imageRequest = {
             auth: request.auth,
-            data: {
-              prompt: prompts[i],
-              pageIndex: i
-            }
+            data: { ...prompts[i], pageIndex: i }
           };
           const result = await exports.generateImageV4(imageRequest);
-          results.push({
-            pageIndex: i,
-            success: true,
-            imageUrl: result.imageUrl
-          });
+          results.push({ pageIndex: i, success: true, imageUrl: result.imageUrl });
         } catch (error) {
-          results.push({
-            pageIndex: i,
-            success: false,
-            error: error.message
-          });
+          results.push({ pageIndex: i, success: false, error: error.message });
         }
       }
-      return {
-        results: results,
-        totalPages: prompts.length,
-        successCount: results.filter(r => r.success).length
-      };
+      return { results: results, totalPages: prompts.length, successCount: results.filter(r => r.success).length };
     } catch (error) {
       throw new HttpsError('internal', `Batch generation (Imagen 4) failed: ${error.message}`);
     }
   }
 );
 
+// 新增：流式故事生成函数
+exports.generateTaleStream = onRequest(UTILS.buildStreamFunctionConfig(), (request, response) => {
+  // 使用cors中间件处理CORS
+  cors(request, response, async () => {
+    // 设置SSE头部
+    response.setHeader('Content-Type', 'text/event-stream');
+    response.setHeader('Cache-Control', 'no-cache');
+    response.setHeader('Connection', 'keep-alive');
+
+    // 验证用户认证
+    const authHeader = request.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      response.write(`data: ${JSON.stringify({ error: 'Unauthorized: Missing or invalid Authorization header' })}\n\n`);
+      response.end();
+      return;
+    }
+
+    // 验证Firebase ID token
+    const idToken = authHeader.split('Bearer ')[1];
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+      console.log('User authenticated:', decodedToken.uid);
+    } catch (error) {
+      console.error('Token verification failed:', error);
+      response.write(`data: ${JSON.stringify({ error: 'Unauthorized: Invalid token' })}\n\n`);
+      response.end();
+      return;
+    }
+
+    try {
+      const { story, pageCount = 10 } = request.body;
+      
+      if (!story || !story.trim()) {
+        response.write(`data: ${JSON.stringify({ error: 'Story content is required' })}\n\n`);
+        response.end();
+        return;
+      }
+
+      // 发送初始状态
+      response.write(`data: ${JSON.stringify({ 
+        type: 'progress', 
+        step: 'initializing',
+        message: 'Initializing story generation process...' 
+      })}\n\n`);
+
+      // 获取访问令牌
+      const client = await auth.getClient();
+      const accessToken = await client.getAccessToken();
+      if (!accessToken?.token) {
+        response.write(`data: ${JSON.stringify({ error: 'Failed to acquire access token' })}\n\n`);
+        response.end();
+        return;
+      }
+
+      response.write(`data: ${JSON.stringify({ 
+        type: 'progress', 
+        step: 'connecting',
+        message: 'Connecting to Gemini AI service...' 
+      })}\n\n`);
+
+      // 调用Gemini API进行流式生成
+      await callGeminiStream(accessToken.token, story, pageCount, response, decodedToken.uid);
+
+    } catch (error) {
+      console.error('Error in generateTaleStream:', error);
+      response.write(`data: ${JSON.stringify({ 
+        type: 'error', 
+        message: error.message 
+      })}\n\n`);
+      response.end();
+    }
+  });
+});
+
+// 流式Gemini调用函数
+async function callGeminiStream(accessToken, story, pageCount, response, userId) {
+  const model = API_CONFIG.GEMINI_MODEL;
+  const apiUrl = UTILS.buildApiUrl(model, 'streamGenerateContent');
+
+  // 使用配置文件中的故事生成提示词
+  const systemPrompt = PROMPTS.STORY_GENERATION(pageCount);
+  const requestBody = UTILS.buildGeminiRequest(story, systemPrompt);
+
+  response.write(`data: ${JSON.stringify({ 
+    type: 'progress', 
+    step: 'analyzing',
+    message: 'Analyzing story structure and characters...' 
+  })}\n\n`);
+
+  try {
+    const fetch = require('node-fetch');
+    const streamResponse = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!streamResponse.ok) {
+      const errorText = await streamResponse.text();
+      console.error(`Gemini API call failed with status ${streamResponse.status}:`, errorText);
+      throw new Error(`Gemini API failed with status ${streamResponse.status}`);
+    }
+
+    let accumulatedContent = '';
+    let chunkCount = 0;
+
+    // 处理流式响应
+    streamResponse.body.on('data', (chunk) => {
+      chunkCount++;
+      const chunkStr = chunk.toString();
+      
+      // 每10个chunk发送一次进度更新
+      if (chunkCount % 10 === 0 || chunkCount === 1) {
+        response.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          step: 'generating',
+          message: `Processing content chunk ${chunkCount}...`,
+          progress: Math.min(chunkCount * 0.1, 90)
+        })}\n\n`);
+      }
+
+      // 累积内容
+      accumulatedContent += chunkStr;
+      
+      // 尝试解析部分JSON（如果可能）
+      try {
+        const lines = chunkStr.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.substring(6);
+            if (jsonStr.trim() && jsonStr !== '[DONE]') {
+              const data = JSON.parse(jsonStr);
+              if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                // 发送部分内容
+                response.write(`data: ${JSON.stringify({ 
+                  type: 'partial_content', 
+                  content: data.candidates[0].content.parts[0].text
+                })}\n\n`);
+              }
+            }
+          }
+        }
+      } catch (parseError) {
+        // 忽略部分解析错误，继续累积
+      }
+    });
+
+    streamResponse.body.on('end', async () => {
+      try {
+        console.log('Accumulated content length:', accumulatedContent.length);
+        console.log('First 1000 chars:', accumulatedContent.substring(0, 1000));
+        console.log('Last 1000 chars:', accumulatedContent.substring(Math.max(0, accumulatedContent.length - 1000)));
+        
+        // 解析最终内容 - Gemini返回的是JSON数组格式
+        console.log('Attempting to parse as complete JSON array...');
+        
+        let finalContent = '';
+        let validJsonObjects = 0;
+        
+        try {
+          // 尝试将整个响应解析为JSON数组
+          const responseData = JSON.parse(accumulatedContent);
+          console.log('Successfully parsed as JSON array, length:', responseData.length);
+          
+          if (Array.isArray(responseData)) {
+            for (const item of responseData) {
+              if (item.candidates?.[0]?.content?.parts?.[0]?.text) {
+                finalContent += item.candidates[0].content.parts[0].text;
+                validJsonObjects++;
+              }
+            }
+          } else {
+            console.log('Response is not an array, trying as single object');
+            if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
+              finalContent += responseData.candidates[0].content.parts[0].text;
+              validJsonObjects++;
+            }
+          }
+        } catch (jsonError) {
+          console.log('Failed to parse as complete JSON, trying line-by-line approach...');
+          
+          // 回退到逐行解析
+          const lines = accumulatedContent.split('\n');
+          let sseLines = 0;
+          let directJsonLines = 0;
+          let emptyLines = 0;
+          let dataLines = 0;
+          
+          for (const line of lines) {
+            if (!line.trim()) {
+              emptyLines++;
+            } else if (line.startsWith('data: ')) {
+              dataLines++;
+              const jsonStr = line.substring(6);
+              if (jsonStr.trim() && jsonStr !== '[DONE]') {
+                sseLines++;
+                try {
+                  const data = JSON.parse(jsonStr);
+                  validJsonObjects++;
+                  if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    finalContent += data.candidates[0].content.parts[0].text;
+                  }
+                } catch (parseError) {
+                  console.log('Failed to parse SSE line:', jsonStr.substring(0, 200));
+                }
+              }
+            } else if (line.trim() && !line.startsWith('data:')) {
+              directJsonLines++;
+              try {
+                const data = JSON.parse(line);
+                validJsonObjects++;
+                if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                  finalContent += data.candidates[0].content.parts[0].text;
+                }
+              } catch (parseError) {
+                // 忽略单行解析错误，这是预期的
+              }
+            }
+          }
+          
+          console.log('Line-by-line analysis:');
+          console.log('- Total lines:', lines.length);
+          console.log('- Empty lines:', emptyLines);
+          console.log('- Data lines (SSE format):', dataLines);
+          console.log('- Valid SSE lines:', sseLines);
+          console.log('- Direct JSON lines:', directJsonLines);
+        }
+        
+        console.log('Parsing summary:');
+        console.log('- Valid JSON objects processed:', validJsonObjects);
+        console.log('- Final content length:', finalContent.length);
+
+        if (!finalContent) {
+          // 保存原始响应以供调试
+          console.log('Saving raw response for debugging...');
+          const debugContent = accumulatedContent.substring(0, 5000); // 前5000字符
+          console.log('Debug content:', debugContent);
+          throw new Error('No content generated from Gemini API');
+        }
+
+        response.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          step: 'parsing',
+          message: 'Parsing generated content...' 
+        })}\n\n`);
+
+        // 解析JSON
+        const taleData = JSON.parse(finalContent);
+        
+        if (!taleData || !taleData.pages) {
+          throw new Error("Invalid JSON structure from Gemini, 'pages' field is missing.");
+        }
+
+        response.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          step: 'saving',
+          message: 'Saving generated content...' 
+        })}\n\n`);
+
+        // 保存数据（使用流式方式减少内存使用）
+        const taleId = admin.firestore().collection('tmp').doc().id;
+        await saveDataStreamWise(userId, taleId, taleData);
+
+        response.write(`data: ${JSON.stringify({ 
+          type: 'complete', 
+          taleId: taleId,
+          message: 'Story generation completed successfully!' 
+        })}\n\n`);
+
+        response.end();
+
+      } catch (error) {
+        console.error('Error processing final content:', error);
+        response.write(`data: ${JSON.stringify({ 
+          type: 'error', 
+          message: error.message 
+        })}\n\n`);
+        response.end();
+      }
+    });
+
+    streamResponse.body.on('error', (error) => {
+      console.error('Stream error:', error);
+      response.write(`data: ${JSON.stringify({ 
+        type: 'error', 
+        message: error.message 
+      })}\n\n`);
+      response.end();
+    });
+
+  } catch (error) {
+    console.error('Error in stream processing:', error);
+    response.write(`data: ${JSON.stringify({ 
+      type: 'error', 
+      message: error.message 
+    })}\n\n`);
+    response.end();
+  }
+}
+
+// 流式数据保存函数 - 减少内存使用
+async function saveDataStreamWise(userId, taleId, taleData) {
+  const bucketName = UTILS.getBucketName();
+  const bucket = admin.storage().bucket(bucketName);
+  const fileName = UTILS.buildFilePath(userId, taleId); // 使用正常路径，与getTaleData一致
+  const file = bucket.file(fileName);
+
+  // 创建写入流
+  const writeStream = file.createWriteStream({
+    metadata: {
+      contentType: 'application/gzip',
+      contentEncoding: 'gzip',
+    },
+  });
+
+  // 创建gzip压缩流
+  const gzipStream = zlib.createGzip();
+  
+  return new Promise((resolve, reject) => {
+    writeStream.on('error', reject);
+    writeStream.on('finish', resolve);
+    
+    gzipStream.pipe(writeStream);
+    
+    // 分块写入数据以减少内存使用
+    const jsonString = JSON.stringify(taleData);
+    const chunkSize = 1024 * 64; // 64KB chunks
+    
+    for (let i = 0; i < jsonString.length; i += chunkSize) {
+      const chunk = jsonString.slice(i, i + chunkSize);
+      gzipStream.write(chunk);
+    }
+    
+    gzipStream.end();
+  });
+}

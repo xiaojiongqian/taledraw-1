@@ -19,37 +19,35 @@ const PageItem = ({
     setEditedPrompt(page.imagePrompt || '');
   }, [page.imagePrompt]);
 
-  const handleSavePrompt = () => {
-    if (editedPrompt.trim() !== page.imagePrompt) {
-      onUpdatePrompt(index, editedPrompt.trim());
+  const handleExpandClick = () => {
+    if (!isExpanded) {
+      // Expanding: enter edit mode
+      setIsEditingPrompt(true);
+      setIsExpanded(true);
+    } else {
+      // Collapsing: is like a cancel action
+      handleCancelEdit();
     }
-    setIsEditingPrompt(false);
   };
 
   const handleCancelEdit = () => {
-    setEditedPrompt(page.imagePrompt || '');
+    setEditedPrompt(page.imagePrompt || ''); // Revert changes
     setIsEditingPrompt(false);
-  };
-
-  const handleRegenerate = () => {
-    const finalPrompt = isEditingPrompt ? editedPrompt.trim() : page.imagePrompt;
-    onRegenerateImage(index, finalPrompt);
-    if (isEditingPrompt) {
-      setIsEditingPrompt(false);
-    }
+    setIsExpanded(false); // Collapse the section
   };
 
   const handleSaveAndRegenerate = () => {
-    // 先保存提示词到状态中
-    if (isEditingPrompt && editedPrompt.trim() !== page.imagePrompt) {
+    // First, save the prompt to the state if it has changed
+    if (editedPrompt.trim() !== page.imagePrompt) {
       onUpdatePrompt(index, editedPrompt.trim());
     }
-    // 然后重新生成
-    const finalPrompt = isEditingPrompt ? editedPrompt.trim() : page.imagePrompt;
+    // Then, trigger regeneration with the potentially new prompt
+    const finalPrompt = editedPrompt.trim();
     onRegenerateImage(index, finalPrompt);
-    if (isEditingPrompt) {
-      setIsEditingPrompt(false);
-    }
+    
+    // Collapse the section after triggering
+    setIsEditingPrompt(false);
+    setIsExpanded(false);
   };
 
   const getStatusText = () => {
@@ -59,6 +57,7 @@ const PageItem = ({
       case 'error':
         return '生成失败';
       case 'generating':
+      case 'regenerating':
         return '生成中...';
       default:
         return '未知状态';
@@ -107,7 +106,7 @@ const PageItem = ({
                 <p className="error-detail">{page.error}</p>
                 <button 
                   className="regenerate-button"
-                  onClick={handleRegenerate}
+                  onClick={handleSaveAndRegenerate}
                   disabled={isGenerating}
                 >
                   重新生成
@@ -126,7 +125,7 @@ const PageItem = ({
               <div className="image-overlay">
                 <button 
                   className="regenerate-overlay-button"
-                  onClick={handleRegenerate}
+                  onClick={handleSaveAndRegenerate}
                   disabled={isGenerating}
                   title="重新生成图像"
                 >
@@ -140,7 +139,7 @@ const PageItem = ({
                 <p className="pending-title">等待生成</p>
                 <button 
                   className="regenerate-button"
-                  onClick={handleRegenerate}
+                  onClick={handleSaveAndRegenerate}
                   disabled={isGenerating}
                 >
                   生成图像
@@ -156,63 +155,38 @@ const PageItem = ({
           <div className="prompt-header">
             <button 
               className="expand-button"
-              onClick={() => setIsExpanded(!isExpanded)}
+              onClick={handleExpandClick}
             >
-              {isExpanded ? '收起' : '展开'} 提示词
+              {isExpanded ? '收起提示词' : '提示词'}
             </button>
-            {isExpanded && (
-              <button 
-                className="edit-button"
-                onClick={() => setIsEditingPrompt(!isEditingPrompt)}
-              >
-                {isEditingPrompt ? '取消' : '编辑'}
-              </button>
-            )}
           </div>
           
           {isExpanded && (
             <div className="prompt-content">
-              {isEditingPrompt ? (
-                <div className="prompt-editor">
-                  <div className="safety-tips">
-                    <small style={{color: '#666', marginBottom: '8px', display: 'block'}}>
-                      💡 <strong>安全提示</strong>：为提高生成成功率，请使用友善、积极的词汇描述场景。避免暴力、恐怖或争议性内容，系统会自动优化您的提示词。
-                    </small>
-                  </div>
-                  <textarea
-                    value={editedPrompt}
-                    onChange={(e) => setEditedPrompt(e.target.value)}
-                    rows={4}
-                    placeholder="输入图像生成提示词，例如：'可爱的小猫在花园里快乐地玩耍'。系统将自动添加绘本风格和角色一致性要求。"
-                    className="prompt-textarea"
-                  />
-                  <div className="editor-actions">
-                    <button 
-                      className="save-button"
-                      onClick={handleSavePrompt}
-                    >
-                      保存
-                    </button>
-                    <button 
-                      className="cancel-button"
-                      onClick={handleCancelEdit}
-                    >
-                      取消
-                    </button>
-                    <button 
-                      className="regenerate-with-prompt-button"
-                      onClick={handleSaveAndRegenerate}
-                      disabled={isGenerating}
-                    >
-                      保存并重新生成
-                    </button>
-                  </div>
+              <div className="prompt-editor">
+                <textarea
+                  value={editedPrompt}
+                  onChange={(e) => setEditedPrompt(e.target.value)}
+                  rows={4}
+                  placeholder="输入图像生成提示词..."
+                  className="prompt-textarea"
+                />
+                <div className="editor-actions">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleSaveAndRegenerate}
+                    disabled={isGenerating}
+                  >
+                    保存并重新生成
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={handleCancelEdit}
+                  >
+                    取消
+                  </button>
                 </div>
-              ) : (
-                <div className="prompt-display">
-                  <p>{page.imagePrompt}</p>
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>

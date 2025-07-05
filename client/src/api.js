@@ -1,21 +1,12 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from './firebase';
+import { getAuth } from 'firebase/auth';
 
-// GCP项目ID和区域配置
-// const PROJECT_ID = 'ai-app-taskforce';
-// const LOCATION = 'us-central1';
+// 导入配置
+import { API_CONFIG, UTILS } from './config';
 
 // 现在所有AI服务都通过Firebase Functions访问Vertex AI
-
-// 重新引入版本控制
-const IMAGEN_API_VERSION = process.env.REACT_APP_IMAGEN_API_VERSION || '3';
-const IMAGEN3_REGION = process.env.REACT_APP_IMAGEN3_REGION || 'us-east5';
-const IMAGEN4_REGION = process.env.REACT_APP_IMAGEN4_REGION || 'us-central1';
-const IMAGE_GEN_INTERVAL = IMAGEN_API_VERSION === '4' ? 1500 : 1000;
-
-function getCurrentRegion() {
-  return IMAGEN_API_VERSION === '4' ? IMAGEN4_REGION : IMAGEN3_REGION;
-}
+// 数据存储也完全通过云函数管理，支持 Cloud Storage 和 Firestore 两种模式
 
 // 注意：原来的 generateStoryPages 函数已移除，现在直接使用云函数的 generateTale
 
@@ -88,14 +79,14 @@ function shouldRetryError(error) {
 }
 
 // 使用Imagen 3或4生成图像（通过Firebase Functions）- 智能多角色场景管理  
-export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '16:9', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', onProgress = null) {
+export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '1:1', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', onProgress = null) {
   const attemptGeneration = async () => {
     const { sceneCharacters = [], sceneType = '主角场景' } = pageData;
     
-    // 根据.env配置动态选择函数名
-    const functionName = IMAGEN_API_VERSION === '4' ? 'generateImageV4' : 'generateImage'; 
+    // 根据配置动态选择函数名
+    const functionName = UTILS.getImageGenerationFunction(); 
     
-    console.log(`生成第 ${pageIndex + 1} 页图像 - 函数: ${functionName}, 版本: ${IMAGEN_API_VERSION}`);
+    console.log(UTILS.formatLogMessage(pageIndex, `生成图像 - 函数: ${functionName}, 版本: ${API_CONFIG.IMAGEN_API_VERSION}`));
     console.log(`场景: ${sceneType}, 角色: [${sceneCharacters.join(', ')}]`);
 
     const generateImage = httpsCallable(functions, functionName);
@@ -156,21 +147,29 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
       negativePrompt: enhancedNegativePrompt // 增强的负向提示词，明确排除文字
     };
 
-    // 记录场景类型和角色信息
+    // Record scene type and character information
     if (onProgress) {
       const characterInfo = sceneCharacters.length > 0 ? sceneCharacters.join(', ') : 'no characters';
-      onProgress(`Generating page ${pageIndex + 1} - ${sceneType} with ${characterInfo}`, 'image');
+      onProgress(`Generating page ${pageIndex + 1} illustration - ${sceneType}, characters: ${characterInfo}`, 'image');
     }
     console.log(`Page ${pageIndex + 1}: ${sceneType} - Characters: [${sceneCharacters.join(', ')}]`);
+    
+    // Send image generation request
+    if (onProgress) {
+      onProgress(UTILS.formatLogMessage(pageIndex, `Calling Imagen ${API_CONFIG.IMAGEN_API_VERSION} API to generate image...`), 'image');
+    }
     
     const result = await generateImage(requestData);
     
     if (result.data && result.data.success && result.data.imageUrl) {
-      console.log(`Page ${pageIndex + 1} image generated successfully`);
+      console.log(UTILS.formatLogMessage(pageIndex, 'image generated successfully'));
+      if (onProgress) {
+        onProgress(UTILS.formatLogMessage(pageIndex, 'illustration generated successfully!'), 'success');
+      }
       return result.data.imageUrl;
     } else {
-      console.error('Imagen 4 API returned error:', result.data);
-      throw new Error(result.data.error || 'Imagen 4 API returned invalid response');
+      console.error(UTILS.formatErrorMessage('API returned error'), result.data);
+      throw new Error(result.data.error || UTILS.formatErrorMessage('API returned invalid response'));
     }
   };
 
@@ -196,7 +195,7 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     }
     
     if (onProgress) {
-      onProgress(`Page ${pageIndex + 1} generation failed: ${errorMessage}`, 'error');
+      onProgress(`Page ${pageIndex + 1} image generation failed: ${errorMessage}`, 'error');
     }
     
     // 直接抛出错误，不再使用占位符图像
@@ -205,32 +204,198 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
   }
 }
 
-// 主要的故事生成函数
-export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9', onProgress = null, signal = null) {
+// 新增：流式故事生成函数
+export async function generateTaleStream(storyText, pageCount, aspectRatio, onProgress, signal) {
   try {
-    console.log(`Starting tale generation (${pageCount} pages, ${aspectRatio} ratio)...`);
-    
-    // 验证输入参数
     if (!storyText || !storyText.trim()) {
-      throw new Error('Story text is required');
+      throw new Error('Story content cannot be empty');
     }
 
-    // 检查中断信号
-    if (signal && signal.aborted) {
-      throw new Error('Generation was aborted by user');
+    // 获取当前用户的认证token
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User must be authenticated');
     }
 
-    // 第一步：调用优化后的 generateTale 云函数（替代 generateStoryPages）
+    const idToken = await user.getIdToken();
+    
+    // 构建流式请求URL
+    const region = UTILS.getImagenRegion();
+    const baseUrl = UTILS.buildFunctionUrl('generateTaleStream', region);
+    // 添加时间戳参数来避免缓存问题
+    const streamUrl = `${baseUrl}?_t=${Date.now()}`;
+
+    // 发送初始进度
     if (onProgress) {
-      onProgress({ 
-        step: 'generating_pages', 
-        current: 0, 
-        total: pageCount + 1,
-        log: 'Analyzing story and generating pages with character consistency...'
+      onProgress({
+        step: 'initializing',
+        log: 'Initializing streaming story generation...'
       });
     }
-    
-    // 直接调用云函数 generateTale
+
+    // 创建EventSource连接
+    return new Promise((resolve, reject) => {
+      // 使用fetch进行POST请求，然后处理流式响应
+      fetch(streamUrl, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+        body: JSON.stringify({
+          story: storyText.trim(),
+          pageCount: pageCount,
+          aspectRatio: aspectRatio
+        }),
+        signal: signal // 支持取消请求
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const processStream = () => {
+          return reader.read().then(({ done, value }) => {
+            // Check if aborted
+            if (signal && signal.aborted) {
+              const abortError = new Error('Generation process was aborted by user');
+              abortError.name = 'AbortError';
+              throw abortError;
+            }
+            
+            if (done) {
+              return;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // 保留最后一行可能不完整的数据
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.substring(6));
+                  
+                  if (data.type === 'progress') {
+                    if (onProgress) {
+                      onProgress({
+                        step: data.step,
+                        log: data.message,
+                        progress: data.progress
+                      });
+                    }
+                  } else if (data.type === 'partial_content') {
+                    if (onProgress) {
+                      onProgress({
+                        step: 'streaming',
+                        log: 'Receiving generated content...',
+                        partialContent: data.content
+                      });
+                    }
+                  } else if (data.type === 'complete') {
+                    if (onProgress) {
+                      onProgress({
+                        step: 'complete',
+                        log: data.message
+                      });
+                    }
+                    
+                    // 获取生成的数据
+                    const getTaleDataFunc = httpsCallable(functions, 'getTaleData', { timeout: 60000 });
+                    getTaleDataFunc({ taleId: data.taleId })
+                      .then(taleDataResult => {
+                        if (!taleDataResult.data) {
+                          throw new Error(`Failed to retrieve generated tale (ID: ${data.taleId}).`);
+                        }
+                        resolve(taleDataResult.data);
+                      })
+                      .catch(reject);
+                    return;
+                  } else if (data.type === 'error' || data.error) {
+                    reject(new Error(data.message || data.error));
+                    return;
+                  }
+                } catch (parseError) {
+                  console.warn('Failed to parse SSE data:', line, parseError);
+                }
+              }
+            }
+
+            return processStream();
+          });
+        };
+
+        return processStream();
+      })
+      .catch(error => {
+        console.error('Stream connection error:', error);
+        
+        // Check if it was user-initiated abort
+        if (error.name === 'AbortError') {
+          const abortError = new Error('Generation process was aborted by user');
+          abortError.name = 'AbortError';
+          reject(abortError);
+        } else {
+          reject(error);
+        }
+      });
+    });
+
+  } catch (error) {
+    console.error('Error in generateTaleStream:', error);
+    if (onProgress) {
+      onProgress({ step: 'error', log: `Stream generation failed: ${error.message}` });
+    }
+    throw error;
+  }
+}
+
+// 修改原有的generateTale函数，添加流式处理选项
+export async function generateTale(storyText, pageCount, aspectRatio, onProgress, signal, useStreaming = true) {
+  // 如果启用流式处理，使用新的流式函数
+  if (useStreaming) {
+    return generateTaleStream(storyText, pageCount, aspectRatio, onProgress, signal);
+  }
+  
+  // 否则使用原有的非流式处理
+  try {
+    if (!storyText || !storyText.trim()) {
+      throw new Error('Story content cannot be empty');
+    }
+
+    // Step 1: Initialization
+    if (onProgress) {
+      onProgress({
+        step: 'initializing',
+        log: 'Initializing story generation process...'
+      });
+    }
+
+    // Step 2: Connect to AI service
+    if (onProgress) {
+      onProgress({
+        step: 'connecting',
+        log: 'Connecting to Gemini AI service...'
+      });
+    }
+
+    // Step 3: Analyze story
+    if (onProgress) {
+      onProgress({
+        step: 'analyzing',
+        log: 'Using Gemini AI to analyze story structure and character information...'
+      });
+    }
+
     const generateTaleFunc = httpsCallable(functions, 'generateTale', { timeout: 540000 });
     const storyResult = await generateTaleFunc({
       story: storyText,
@@ -238,245 +403,75 @@ export async function generateTale(storyText, pageCount = 6, aspectRatio = '16:9
       aspectRatio: aspectRatio
     });
 
-    if (!storyResult.data || !storyResult.data.pages || storyResult.data.pages.length === 0) {
-      throw new Error('Failed to generate story pages');
+    if (!storyResult.data || !storyResult.data.success || !storyResult.data.taleId) {
+      throw new Error('Failed to initiate story generation process. No Tale ID returned.');
     }
 
-    const { 
-      storyTitle,
-      pages: storyPages, 
-      artStyle, 
-      allCharacters,
-      storyAnalysis 
-    } = storyResult.data;
-    
-    console.log(`Generated ${storyPages.length} story pages with ${Object.keys(allCharacters || {}).length} characters`);
-    console.log(`Story analysis:`, storyAnalysis);
-    console.log(`Total characters identified:`, allCharacters);
-    
-    // 构建详细的分析日志
-    let analysisLog = `Generated ${storyPages.length} story pages with ${Object.keys(allCharacters || {}).length} characters`;
-    if (storyAnalysis?.totalLength) {
-      analysisLog += ` | Story length: ${storyAnalysis.totalLength}`;
-    }
-    if (storyAnalysis?.keyPlots?.length) {
-      analysisLog += ` | Key plots: ${storyAnalysis.keyPlots.length}`;
-    }
-    
+    const { taleId, storageMode } = storyResult.data;
+    console.log(`Received Tale ID: ${taleId}, Storage Mode: ${storageMode}. Fetching full story data...`);
+
+    // Step 4: Story analysis complete
     if (onProgress) {
-      onProgress({ 
-        step: 'generating_pages', 
-        current: 1, 
-        total: pageCount + 1,
-        storyAnalysis: storyAnalysis || {},
-        allCharacters: allCharacters || {},
-        log: analysisLog
+      onProgress({
+        step: 'analysis_complete',
+        log: `Story analysis complete! Generated Tale ID: ${taleId.substring(0,8)}...`
       });
     }
 
-    // 第二步：为每个页面生成图像（串行处理以避免API限制）
-    // 首先创建基础的页面结构，这样可以立即显示文字内容
-    const pagesWithImages = storyPages.map((page, index) => ({
-      text: page.text,
-      title: page.title,
-      image: null, // 图片待生成
-      imagePrompt: page.imagePrompt,
-      sceneType: page.sceneType,
-      sceneCharacters: page.sceneCharacters || [],
-      scenePrompt: page.scenePrompt,
-      characterPrompts: page.characterPrompts,
-      isPlaceholder: false,
-      status: 'generating' // 标记为生成中
-    }));
-    
-    // 立即显示包含文字的页面结构
+    // Step 5: Fetch generated data
     if (onProgress) {
-      onProgress({ 
-        step: 'generating_images', 
-        current: 0, 
-        total: storyPages.length,
-        successCount: 0,
-        failureCount: 0,
-        allPages: [...pagesWithImages],
-        log: 'Starting image generation with Imagen 4...'
+      onProgress({
+        step: 'fetching_data',
+        log: `Fetching generated story data from ${storageMode}...`
       });
     }
-    
-    let successCount = 0;
-    let failureCount = 0;
-    
-    for (let index = 0; index < storyPages.length; index++) {
-      // 检查是否用户已经中断操作
-      if (signal && signal.aborted) {
-        throw new Error('Generation was aborted by user');
-      }
-      
-      const page = storyPages[index];
-      console.log(`Generating page ${index + 1} image (${aspectRatio} ratio)...`);
-      
-      // 生成开始日志
+
+    const getTaleDataFunc = httpsCallable(functions, 'getTaleData', { timeout: 60000 });
+    const taleDataResult = await getTaleDataFunc({ taleId });
+
+    if (!taleDataResult.data) {
+      throw new Error(`Failed to retrieve generated tale (ID: ${taleId}).`);
+    }
+
+    const taleData = taleDataResult.data;
+    if (!taleData || !taleData.pages || taleData.pages.length === 0) {
+      throw new Error('Failed to generate story pages from fetched data.');
+    }
+
+    // Step 6: Data parsing complete
+    if (onProgress) {
+      onProgress({
+        step: 'data_parsed',
+        log: `Successfully retrieved ${taleData.pages.length} pages of story content, title: "${taleData.storyTitle}"`
+      });
+    }
+
+    // Step 7: Character information processing
+    if (taleData.allCharacters && Object.keys(taleData.allCharacters).length > 0) {
+      const characterNames = Object.keys(taleData.allCharacters);
       if (onProgress) {
-        onProgress({ 
-          step: 'generating_images', 
-          current: index, 
-          total: storyPages.length,
-          successCount,
-          failureCount,
-          allPages: [...pagesWithImages],
-          log: `Generating image for page ${index + 1}...`
+        onProgress({
+          step: 'characters_ready',
+          log: `Identified ${characterNames.length} main characters: ${characterNames.join(', ')}`
         });
       }
-      
-      try {
-        
-        // 使用增强的重试机制生成图像，传入参考图片URL和进度回调
-        const currentIndex = index;
-        const currentSuccessCount = successCount;
-        const currentFailureCount = failureCount;
-        
-        // 构建页面角色场景数据结构
-        const sceneData = {
-          sceneCharacters: page.sceneCharacters || [],
-          sceneType: page.sceneType || '主角场景'
-        };
-
-        const imageUrl = await generateImageWithImagen(
-          page.imagePrompt, 
-          currentIndex, 
-          aspectRatio,
-          sceneData, // 传递页面角色场景数据
-          allCharacters || {}, // 传递所有角色描述
-          artStyle, // 传递艺术风格
-          (message, type) => {
-            // 将图像生成的详细日志传递给UI
-            if (onProgress) {
-              onProgress({
-                step: 'generating_images',
-                current: currentIndex,
-                total: storyPages.length,
-                successCount: currentSuccessCount,
-                failureCount: currentFailureCount,
-                allPages: [...pagesWithImages],
-                log: message
-              });
-            }
-          }
-        );
-        
-        // 图像生成成功
-        const pageData = {
-          text: page.text,
-          title: page.title,
-          image: imageUrl,
-          imagePrompt: page.imagePrompt,
-          sceneType: page.sceneType || '主角场景',
-          sceneCharacters: page.sceneCharacters || [],
-          scenePrompt: page.scenePrompt,
-          characterPrompts: page.characterPrompts,
-          isPlaceholder: false,
-          status: 'success'
-        };
-        
-        // 更新对应的页面数据
-        pagesWithImages[index] = pageData;
-        
-        successCount++;
-        console.log(`Page ${index + 1} image generated successfully`);
-        
-      } catch (error) {
-        console.error(`Page ${index + 1} image generation failed:`, error);
-        failureCount++;
-        
-        // 生成失败时不提供占位符图像，而是保持错误状态
-        pagesWithImages[index] = {
-          text: page.text,
-          title: page.title,
-          image: null, // 不提供占位符图像
-          imagePrompt: page.imagePrompt,
-          sceneType: page.sceneType || '主角场景',
-          sceneCharacters: page.sceneCharacters || [],
-          scenePrompt: page.scenePrompt,
-          characterPrompts: page.characterPrompts,
-          error: error.message,
-          isPlaceholder: false,
-          status: 'error'
-        };
-      }
-      
-      // 更新进度并传递当前生成的页面
-      if (onProgress) {
-        const pageStatus = pagesWithImages[index];
-        let logMessage = '';
-        if (pageStatus.status === 'success') {
-          logMessage = `Page ${index + 1} image generated successfully`;
-        } else if (pageStatus.status === 'error') {
-          logMessage = `Page ${index + 1} generation failed: ${pageStatus.error}`;
-        }
-        
-        onProgress({ 
-          step: 'generating_images', 
-          current: index + 1, 
-          total: storyPages.length,
-          successCount,
-          failureCount,
-          newPage: pagesWithImages[index], // 传递新生成的页面数据
-          allPages: [...pagesWithImages], // 传递当前所有已生成的页面
-          log: logMessage
-        });
-      }
-      
-      // 小延迟避免API限制
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
-    const finalPages = [...pagesWithImages];
-    
-    console.log(`Tale generation completed. Generated ${finalPages.length} pages.`);
-    console.log(`Success rate: ${successCount}/${finalPages.length} (${Math.round(successCount / finalPages.length * 100)}%)`);
-    
-    // 生成完成
+
+    // Step 8: Prepare for image generation
     if (onProgress) {
-      onProgress({ 
-        step: 'complete', 
-        current: finalPages.length, 
-        total: finalPages.length,
-        successCount,
-        failureCount,
-        allPages: finalPages,
-        log: `Tale generation completed. ${successCount} successful, ${failureCount} failed.`
+      onProgress({
+        step: 'preparing_images',
+        log: 'Story structure generation complete, preparing to generate illustrations for each page...'
       });
     }
-
-    return {
-      pages: finalPages,
-      statistics: {
-        totalPages: finalPages.length,
-        successfulImages: successCount,
-        failedImages: failureCount,
-        successRate: Math.round(successCount / finalPages.length * 100)
-      },
-      storyTitle: storyTitle || '您的故事绘本',
-      allCharacters: allCharacters || {},
-      artStyle: artStyle || '儿童绘本插画风格'
-    };
+    
+    return taleData;
 
   } catch (error) {
     console.error('Error in generateTale:', error);
-    
-    if (error.message.includes('aborted')) {
-      throw error; // 重新抛出中断错误
-    }
-    
-    // 生成失败
     if (onProgress) {
-      onProgress({ 
-        step: 'error', 
-        current: 0, 
-        total: pageCount,
-        log: `Generation failed: ${error.message}`
-      });
+      onProgress({ step: 'error', log: `Generation process interrupted: ${error.message}` });
     }
-    
     throw error;
   }
 }
@@ -491,7 +486,6 @@ export async function extractCharacter(storyText) {
     }
 
     // 使用Firebase Functions调用Vertex AI Gemini
-    const region = getCurrentRegion();
     const extractCharacterFunc = httpsCallable(functions, 'extractCharacter');
 
     // 调用Firebase Function进行角色提取
@@ -579,8 +573,7 @@ export async function generateCharacterAvatar(characterName, characterDescriptio
 
     console.log('Character avatar generation prompt:', characterPrompt);
 
-    // 使用Firebase Functions调用Imagen 4
-    const region = getCurrentRegion();
+    // 使用Firebase Functions调用Imagen API
     const generateImage = httpsCallable(functions, 'generateImage');
     
     const result = await generateImage({
@@ -606,8 +599,8 @@ export async function generateCharacterAvatar(characterName, characterDescriptio
         generatedAt: new Date().toISOString()
       };
     } else {
-      console.error('Imagen 4 API returned error:', result.data);
-      throw new Error(result.data.error || 'Imagen 4 API returned invalid response');
+      console.error(UTILS.formatErrorMessage('API returned error'), result.data);
+      throw new Error(result.data.error || UTILS.formatErrorMessage('API returned invalid response'));
     }
     
   } catch (error) {
