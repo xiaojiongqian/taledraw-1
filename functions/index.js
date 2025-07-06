@@ -68,13 +68,15 @@ class TaleStorageStrategy {
     const file = bucket.file(fileName);
 
     const jsonString = JSON.stringify(taleData);
-    // Use the synchronous, memory-intensive gzip. Requires sufficient function memory.
-    const gzippedData = zlib.gzipSync(Buffer.from(jsonString));
+    // 明确指定UTF-8编码以避免乱码问题
+    const gzippedData = zlib.gzipSync(Buffer.from(jsonString, 'utf8'));
 
     await file.save(gzippedData, {
       metadata: {
         contentType: 'application/gzip',
         contentEncoding: 'gzip',
+        // 明确指定字符集
+        'content-type': 'application/gzip; charset=utf-8'
       },
     });
     return { success: true, taleId, storageMode: 'cloud_storage' };
@@ -96,12 +98,13 @@ class TaleStorageStrategy {
       // Check if the buffer is actually gzipped by checking magic number
       if (gzippedBuffer.length < 2 || gzippedBuffer[0] !== 0x1f || gzippedBuffer[1] !== 0x8b) {
         console.log('File does not appear to be gzipped, trying to parse as plain JSON');
-        // If not gzipped, try to parse as plain JSON
-        const jsonString = gzippedBuffer.toString();
+        // 明确指定UTF-8编码解析
+        const jsonString = gzippedBuffer.toString('utf8');
         return JSON.parse(jsonString);
       }
       
-      const jsonString = zlib.gunzipSync(gzippedBuffer).toString();
+      // 明确指定UTF-8编码解压
+      const jsonString = zlib.gunzipSync(gzippedBuffer).toString('utf8');
       return JSON.parse(jsonString);
     } catch (error) {
       console.error('Error reading from Cloud Storage:', error);
@@ -112,7 +115,8 @@ class TaleStorageStrategy {
         console.log('Gunzip failed, attempting to read as plain JSON');
         try {
           const [plainBuffer] = await file.download();
-          const jsonString = plainBuffer.toString();
+          // 明确指定UTF-8编码解析
+          const jsonString = plainBuffer.toString('utf8');
           return JSON.parse(jsonString);
         } catch (parseError) {
           console.error('Failed to parse as plain JSON:', parseError);
@@ -657,6 +661,7 @@ async function callGemini(accessToken, systemPrompt, story) {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json; charset=utf-8',
     },
     body: JSON.stringify(requestBody)
   });
@@ -696,7 +701,10 @@ async function callGemini(accessToken, systemPrompt, story) {
     console.error('Parts path:', data.candidates?.[0]?.content?.parts);
     throw new Error('Invalid or empty content from Gemini API.');
   }
-  return generatedText;
+  
+  // 确保返回的文本正确处理UTF-8编码
+  const cleanedText = generatedText.replace(/\uFFFD/g, '').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '');
+  return cleanedText;
 }
 
 exports.generateTale = onCall(UTILS.buildFunctionConfig('2GiB'), async (request) => {
@@ -1245,6 +1253,8 @@ async function saveDataStreamWise(userId, taleId, taleData) {
     metadata: {
       contentType: 'application/gzip',
       contentEncoding: 'gzip',
+      // 明确指定字符集
+      'content-type': 'application/gzip; charset=utf-8'
     },
   });
 
@@ -1263,7 +1273,8 @@ async function saveDataStreamWise(userId, taleId, taleData) {
     
     for (let i = 0; i < jsonString.length; i += chunkSize) {
       const chunk = jsonString.slice(i, i + chunkSize);
-      gzipStream.write(chunk);
+      // 明确指定UTF-8编码写入
+      gzipStream.write(chunk, 'utf8');
     }
     
     gzipStream.end();

@@ -836,13 +836,20 @@ function App() {
         })
       );
 
+      // 确保所有文本内容都正确编码
+      const cleanText = (text) => {
+        if (!text) return '';
+        // 移除乱码字符并进行HTML转义
+        return text.replace(/\uFFFD/g, '').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      };
+
       const htmlContent = `
         <!DOCTYPE html>
         <html lang="zh-CN">
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${storyTitle || 'My Story Book'}</title>
+          <title>${cleanText(storyTitle) || 'My Story Book'}</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
             .container { max-width: 800px; margin: auto; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
@@ -858,12 +865,12 @@ function App() {
         </head>
         <body>
           <div class="container">
-            <h1>${storyTitle || 'My Story Book'}</h1>
+            <h1>${cleanText(storyTitle) || 'My Story Book'}</h1>
             ${pagesWithBase64Images.map((page, index) => `
               <div class="page">
-                <h2>${page.title ? `${index + 1}. ${page.title}` : `${index + 1}.`}</h2>
+                <h2>${page.title ? `${index + 1}. ${cleanText(page.title)}` : `${index + 1}.`}</h2>
                 ${page.imageBase64 ? `<img src="${page.imageBase64}" alt="Page ${index + 1} illustration">` : '<p><em>Image loading failed or not generated</em></p>'}
-                <p>${page.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+                <p>${cleanText(page.text)}</p>
               </div>
             `).join('')}
           </div>
@@ -871,10 +878,11 @@ function App() {
         </html>
       `;
 
-      const blob = new Blob([htmlContent], { type: 'text/html' });
+      // 确保Blob使用正确的编码
+      const blob = new Blob([htmlContent], { type: 'text/html; charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      const safeTitle = storyTitle.replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
+      const safeTitle = (storyTitle || 'storybook').replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
       link.download = `${safeTitle || 'storybook'}.html`;
       document.body.appendChild(link);
       link.click();
@@ -921,6 +929,9 @@ function App() {
   // 初始化时检查并准备状态恢复
   useEffect(() => {
     const initializeApp = async () => {
+      // 先清理可能存在的乱码数据
+      stateManager.cleanCorruptedData();
+      
       // 检查是否有保存的状态
       const stateInfo = stateManager.getStateInfo();
       if (stateInfo && stateInfo.hasGeneratedContent) {
