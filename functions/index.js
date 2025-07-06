@@ -1,6 +1,5 @@
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2/options');
-const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 const { GoogleAuth } = require('google-auth-library');
 const zlib = require('zlib');
@@ -194,18 +193,22 @@ function shouldRetryImagenError(error) {
 }
 
 // Imagen API调用函数
-exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
+exports.generateImage = onCall({
+  region: 'us-central1',
+  memory: '512MB',
+  timeoutSeconds: 300
+}, async (request) => {
   // 验证用户认证
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { 
-    prompt, 
-    pageIndex = 0, 
-    aspectRatio = '1:1', 
-    maxRetries = 2, 
-    referenceImageUrl, 
+  const {
+    prompt,
+    pageIndex = 0,
+    aspectRatio = '1:1',
+    maxRetries = 2,
+    referenceImageUrl,
     seed = 42,
     sampleCount = 1,
     safetyFilterLevel = 'OFF',
@@ -234,7 +237,7 @@ exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
     '9:16': '9:16'
   };
   
-      const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '1:1';
+  const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '1:1';
 
   // 创建Imagen API调用函数
   const callImagenAPI = async (accessToken) => {
@@ -463,18 +466,12 @@ exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
   };
 
   try {
-    // 在主函数入口处获取一次Token
     const client = await auth.getClient();
-    const accessToken = await client.getAccessToken();
+    const accessToken = (await client.getAccessToken()).token;
+    if (!accessToken) throw new HttpsError('internal', 'Failed to acquire access token.');
 
-    if (!accessToken || !accessToken.token) {
-      throw new HttpsError('internal', 'Failed to acquire access token.');
-    }
+    const base64Data = await retryWithBackoff(() => callImagenAPI(accessToken), maxRetries);
 
-    // 调用Imagen API，并传入Token
-    const base64Data = await callImagenAPI(accessToken.token);
-
-    // 上传到Firebase Storage
     const bucketName = `${PROJECT_ID}.firebasestorage.app`;
     const bucket = admin.storage().bucket(bucketName);
     const fileName = `tale-images/${request.auth.uid}/${Date.now()}_page_${pageIndex}.jpg`;
@@ -514,9 +511,7 @@ exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
   } catch (error) {
     console.error(`Error generating image for page ${pageIndex + 1}:`, error);
     
-    if (error instanceof HttpsError) {
-      throw error;
-    }
+    if (error instanceof HttpsError) throw error;
 
     // 提供更详细的错误信息
     let errorMessage = `Failed to generate image: ${error.message}`;
@@ -535,7 +530,10 @@ exports.generateImage = onCall({ region: 'us-central1' }, async (request) => {
 });
 
 // 批量生成图像函数（可选）
-exports.generateImageBatch = onCall({ region: 'us-central1' }, async (request) => {
+exports.generateImageBatch = onCall({
+  memory: '2GB',
+  timeoutSeconds: 900 // 15 minutes for v2 functions
+}, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -591,7 +589,11 @@ exports.generateImageBatch = onCall({ region: 'us-central1' }, async (request) =
 });
 
 // 健康检查函数
-exports.healthCheck = onCall({ region: 'us-central1' }, () => {
+exports.healthCheck = onCall({
+  memory: '128MB',
+  timeoutSeconds: 60
+}, async (request) => {
+  console.log("Health check successful");
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -600,18 +602,27 @@ exports.healthCheck = onCall({ region: 'us-central1' }, () => {
 });
 
 // 获取故事数据函数
-exports.getTaleData = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
+exports.getTaleData = onCall({
+  memory: '256MB',
+  timeoutSeconds: 60
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+  }
   const { taleId } = request.data;
-  if (!taleId) throw new HttpsError('invalid-argument', 'Tale ID is required.');
+  if (!taleId) {
+    throw new HttpsError('invalid-argument', 'Tale ID is required.');
+  }
   return await TaleStorageStrategy.getTaleData(request.auth.uid, taleId);
 });
 
 // 注意：原 generateStoryPages 函数已移除，现在直接使用优化的 generateTale 函数
 
 // 角色提取函数
-exports.extractCharacter = onCall({ region: 'us-central1' }, async (request) => {
-  // 验证用户认证
+exports.extractCharacter = onCall({
+  memory: '256MB',
+  timeoutSeconds: 120
+}, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -627,10 +638,10 @@ exports.extractCharacter = onCall({ region: 'us-central1' }, async (request) => 
 
     // 获取访问令牌 (复用全局auth实例)
     const client = await auth.getClient();
-    const accessToken = await client.getAccessToken();
+    const accessToken = (await client.getAccessToken()).token;
 
     // 使用配置文件中的角色提取提示词
-    const geminiResponse = await callGemini(accessToken.token, PROMPTS.CHARACTER_EXTRACTION, story);
+    const geminiResponse = await callGemini(accessToken, PROMPTS.CHARACTER_EXTRACTION, story);
     const characterData = JSON.parse(geminiResponse);
     
     return {
@@ -707,309 +718,52 @@ async function callGemini(accessToken, systemPrompt, story) {
   return cleanedText;
 }
 
-exports.generateTale = onCall(UTILS.buildFunctionConfig('2GiB'), async (request) => {
+exports.generateTale = onCall({
+  memory: '2GB',
+  timeoutSeconds: 300
+}, async (request) => {
   if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'User must be authenticated to generate a tale.');
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
 
   const { story, pageCount = 10 } = request.data;
 
-  // 使用配置文件中的故事生成提示词
-  const systemPrompt = PROMPTS.STORY_GENERATION(pageCount);
+  if (!story || !story.trim()) {
+    throw new HttpsError('invalid-argument', 'Story content is required');
+  }
 
   try {
-    console.log('Starting tale generation process...');
+    console.log('Starting tale generation...');
+
+    // 获取访问令牌
     const client = await auth.getClient();
-    const accessToken = await client.getAccessToken();
-    if (!accessToken?.token) {
-      throw new HttpsError('internal', 'Failed to acquire access token.');
-    }
+    const accessToken = (await client.getAccessToken()).token;
 
-    console.log('Calling Gemini API for story analysis and structure generation...');
-    const startTime = Date.now();
-    const geminiResponseText = await callGemini(accessToken.token, systemPrompt, story);
-    const endTime = Date.now();
-    console.log(`Gemini API call completed in ${(endTime - startTime) / 1000} seconds`);
-    const taleData = JSON.parse(geminiResponseText);
-
-    if (!taleData || !taleData.pages) {
-        throw new Error("Invalid JSON structure from Gemini, 'pages' field is missing.");
-    }
+    // 使用配置文件中的故事生成提示词
+    const systemPrompt = PROMPTS.STORY_GENERATION(pageCount);
+    const geminiResponse = await callGemini(accessToken, systemPrompt, story);
+    const taleData = JSON.parse(geminiResponse);
     
-    const result = await TaleStorageStrategy.saveTaleData(request.auth.uid, taleData);
-    console.log('Tale generation and storage successful:', result);
-    return result;
-
-  } catch (error) {
-    console.error('Error in generateTale function:', error);
-    // Ensure we throw an HttpsError for the client to handle
-    if (error instanceof HttpsError) {
-        throw error;
-    }
-    throw new HttpsError('internal', 'An unexpected error occurred during tale generation: ' + error.message);
-  }
-});
-
-// ========== Imagen 4 专用函数组 ========== //
-
-/**
- * 专用函数组：使用Imagen 4生成图像
- * - 使用 us-central1 区域
- * - 模型：imagen-4.0-generate-preview-06-06
- * - 支持一致的角色生成
- * - 更好的提示词理解能力
- * - 更高的图像质量
- * - 统一使用当前项目配置
- */
-exports.generateImageV4 = onCall(
-  { region: 'us-central1' },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated');
+    if (!taleData || !taleData.pages) {
+      throw new Error("Invalid JSON structure from Gemini, 'pages' field is missing.");
     }
 
-    const {
-      prompt,
-      pageIndex,
-      aspectRatio = "1:1",
-      seed = 1,
-      sampleCount = 1,
-      safetyFilterLevel = 'block_most',
-      personGeneration = 'allow_adult',
-      addWatermark = false
-    } = request.data;
-
-    const callImagen4API = async (accessToken) => {
-      const apiUrl = UTILS.buildApiUrl(API_CONFIG.IMAGEN4_MODEL, 'predict');
-      const instance = { prompt };
-      const parameters = {
-        aspectRatio,
-        seed,
-        sampleCount,
-        safetyFilterLevel,
-        personGeneration,
-        addWatermark
-      };
-
-      const requestBody = {
-        instances: [instance],
-        parameters: parameters,
-      };
-
-      try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=utf-8',
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        const responseText = await response.text();
-        console.log('[generateImageV4] Imagen 4 API raw response:', responseText);
-
-        if (!response.ok) {
-          let errorMessage = `Imagen 4 API failed: ${response.status}`;
-          errorMessage += ` - ${responseText}`;
-          const error = new Error(errorMessage);
-          error.status = response.status;
-          throw error;
-        }
-
-        if (!responseText || responseText.trim() === '') {
-          throw new Error('Empty response from Imagen 4 API');
-        }
-
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error('[generateImageV4] Failed to parse Imagen 4 API response as JSON:', responseText);
-          throw new Error(`Invalid JSON response from Imagen 4 API: ${parseError.message}`);
-        }
-
-        if (data.error) {
-          console.error('[generateImageV4] Imagen 4 API returned error:', data.error);
-          throw new Error(`Imagen 4 API error: ${JSON.stringify(data.error)}`);
-        }
-
-        if (!data.predictions || !data.predictions[0]) {
-          console.error('[generateImageV4] Invalid response structure from Imagen 4 API:', data);
-          throw new Error('Invalid response structure from Imagen 4 API - no predictions. Full response: ' + JSON.stringify(data));
-        }
-
-        const prediction = data.predictions[0];
-        if (!prediction.bytesBase64Encoded) {
-          throw new Error('No image data in Imagen 4 API response');
-        }
-        return prediction.bytesBase64Encoded;
-      } catch (error) {
-        console.error('[generateImageV4] Exception:', {
-          prompt,
-          pageIndex,
-          aspectRatio,
-          seed,
-          sampleCount,
-          safetyFilterLevel,
-          personGeneration,
-          addWatermark,
-          apiUrl: typeof apiUrl !== 'undefined' ? apiUrl : null,
-          requestBody: typeof requestBody !== 'undefined' ? requestBody : null,
-          error: error && error.message ? error.message : error
-        });
-        throw error;
-      }
+    // 保存数据
+    const saveResult = await TaleStorageStrategy.saveTaleData(request.auth.uid, taleData);
+    
+    return {
+      success: true,
+      taleId: saveResult.taleId,
+      storageMode: saveResult.storageMode,
+      pages: taleData.pages,
+      title: taleData.title || 'Generated Tale',
+      summary: taleData.summary || 'A wonderful story'
     };
 
-    try {
-      // 在主函数入口处获取一次Token
-      const client = await auth.getClient();
-      const accessToken = await client.getAccessToken();
-
-      if (!accessToken || !accessToken.token) {
-        throw new HttpsError('internal', 'Failed to acquire access token for Imagen4.');
-      }
-
-      const base64Data = await callImagen4API(accessToken.token);
-
-      // 上传到Firebase Storage
-      const bucketName = UTILS.getBucketName();
-      const bucket = admin.storage().bucket(bucketName);
-      const fileName = `tale-images-v4/${request.auth.uid}/${Date.now()}_page_${pageIndex}.jpg`;
-      const file = bucket.file(fileName);
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-
-      await file.save(imageBuffer, {
-        metadata: {
-          contentType: 'image/jpeg',
-          metadata: {
-            userId: request.auth.uid,
-            pageIndex: pageIndex.toString(),
-            prompt: prompt.substring(0, 500)
-          }
-        }
-      });
-
-      await file.makePublic();
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-      return { imageUrl: publicUrl, pageIndex: pageIndex, success: true };
-
-    } catch (error) {
-      let errorMessage = `Failed to generate image (Imagen 4): ${error.message}`;
-      if (error.status) {
-        errorMessage += ` (HTTP ${error.status})`;
-      }
-      throw new HttpsError('internal', errorMessage);
-    }
+  } catch (error) {
+    console.error('Error generating tale:', error);
+    throw new HttpsError('internal', `Tale generation failed: ${error.message}`);
   }
-);
-
-exports.generateImageBatchV4 = onCall(
-  { region: 'us-central1' },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated');
-    }
-    const { prompts } = request.data;
-    if (!prompts || !Array.isArray(prompts)) {
-      throw new HttpsError('invalid-argument', 'Prompts array is required');
-    }
-
-    try {
-      const results = [];
-      for (let i = 0; i < prompts.length; i++) {
-        try {
-          const imageRequest = {
-            auth: request.auth,
-            data: { ...prompts[i], pageIndex: i }
-          };
-          const result = await exports.generateImageV4(imageRequest);
-          results.push({ pageIndex: i, success: true, imageUrl: result.imageUrl });
-        } catch (error) {
-          results.push({ pageIndex: i, success: false, error: error.message });
-        }
-      }
-      return { results: results, totalPages: prompts.length, successCount: results.filter(r => r.success).length };
-    } catch (error) {
-      throw new HttpsError('internal', `Batch generation (Imagen 4) failed: ${error.message}`);
-    }
-  }
-);
-
-// 新增：流式故事生成函数
-exports.generateTaleStream = onRequest(UTILS.buildStreamFunctionConfig(), (request, response) => {
-  // 使用cors中间件处理CORS
-  cors(request, response, async () => {
-    // 设置SSE头部
-    response.setHeader('Content-Type', 'text/event-stream');
-    response.setHeader('Cache-Control', 'no-cache');
-    response.setHeader('Connection', 'keep-alive');
-
-    // 验证用户认证
-    const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      response.write(`data: ${JSON.stringify({ error: 'Unauthorized: Missing or invalid Authorization header' })}\n\n`);
-      response.end();
-      return;
-    }
-
-    // 验证Firebase ID token
-    const idToken = authHeader.split('Bearer ')[1];
-    let decodedToken;
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-      console.log('User authenticated:', decodedToken.uid);
-    } catch (error) {
-      console.error('Token verification failed:', error);
-      response.write(`data: ${JSON.stringify({ error: 'Unauthorized: Invalid token' })}\n\n`);
-      response.end();
-      return;
-    }
-
-    try {
-      const { story, pageCount = 10 } = request.body;
-      
-      if (!story || !story.trim()) {
-        response.write(`data: ${JSON.stringify({ error: 'Story content is required' })}\n\n`);
-        response.end();
-        return;
-      }
-
-      // 发送初始状态
-      response.write(`data: ${JSON.stringify({ 
-        type: 'progress', 
-        step: 'initializing',
-        message: 'Initializing story generation process...' 
-      })}\n\n`);
-
-      // 获取访问令牌
-      const client = await auth.getClient();
-      const accessToken = await client.getAccessToken();
-      if (!accessToken?.token) {
-        response.write(`data: ${JSON.stringify({ error: 'Failed to acquire access token' })}\n\n`);
-        response.end();
-        return;
-      }
-
-      response.write(`data: ${JSON.stringify({ 
-        type: 'progress', 
-        step: 'connecting',
-        message: 'Connecting to Gemini AI service...' 
-      })}\n\n`);
-
-      // 调用Gemini API进行流式生成
-      await callGeminiStream(accessToken.token, story, pageCount, response, decodedToken.uid);
-
-    } catch (error) {
-      console.error('Error in generateTaleStream:', error);
-      response.write(`data: ${JSON.stringify({ 
-        type: 'error', 
-        message: error.message 
-      })}\n\n`);
-      response.end();
-    }
-  });
 });
 
 // 流式Gemini调用函数
@@ -1280,3 +1034,255 @@ async function saveDataStreamWise(userId, taleId, taleData) {
     gzipStream.end();
   });
 }
+
+// ========== Imagen 4 专用函数组 ========== //
+
+/**
+ * 专用函数组：使用Imagen 4生成图像
+ * - 使用 us-central1 区域
+ * - 模型：imagen-4.0-generate-preview-06-06
+ * - 支持一致的角色生成
+ * - 更好的提示词理解能力
+ * - 更高的图像质量
+ * - 统一使用当前项目配置
+ */
+exports.generateImageV4 = onCall({
+  memory: '512MB',
+  timeoutSeconds: 300
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const {
+    prompt,
+    pageIndex,
+    aspectRatio = "1:1",
+    seed = 1,
+    sampleCount = 1,
+    safetyFilterLevel = 'block_most',
+    personGeneration = 'allow_adult',
+    addWatermark = false
+  } = request.data;
+
+  const callImagen4API = async (accessToken) => {
+    const apiUrl = UTILS.buildApiUrl(API_CONFIG.IMAGEN4_MODEL, 'predict');
+    const instance = { prompt };
+    const parameters = {
+      aspectRatio,
+      seed,
+      sampleCount,
+      safetyFilterLevel,
+      personGeneration,
+      addWatermark
+    };
+
+    const requestBody = {
+      instances: [instance],
+      parameters: parameters,
+    };
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const responseText = await response.text();
+      console.log('[generateImageV4] Imagen 4 API raw response:', responseText);
+
+      if (!response.ok) {
+        let errorMessage = `Imagen 4 API failed: ${response.status}`;
+        errorMessage += ` - ${responseText}`;
+        const error = new Error(errorMessage);
+        error.status = response.status;
+        throw error;
+      }
+
+      if (!responseText || responseText.trim() === '') {
+        throw new Error('Empty response from Imagen 4 API');
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('[generateImageV4] Failed to parse Imagen 4 API response as JSON:', responseText);
+        throw new Error(`Invalid JSON response from Imagen 4 API: ${parseError.message}`);
+      }
+
+      if (data.error) {
+        console.error('[generateImageV4] Imagen 4 API returned error:', data.error);
+        throw new Error(`Imagen 4 API error: ${JSON.stringify(data.error)}`);
+      }
+
+      if (!data.predictions || !data.predictions[0]) {
+        console.error('[generateImageV4] Invalid response structure from Imagen 4 API:', data);
+        throw new Error('Invalid response structure from Imagen 4 API - no predictions. Full response: ' + JSON.stringify(data));
+      }
+
+      const prediction = data.predictions[0];
+      if (!prediction.bytesBase64Encoded) {
+        throw new Error('No image data in Imagen 4 API response');
+      }
+      return prediction.bytesBase64Encoded;
+    } catch (error) {
+      console.error('[generateImageV4] Exception:', {
+        prompt,
+        pageIndex,
+        aspectRatio,
+        seed,
+        sampleCount,
+        safetyFilterLevel,
+        personGeneration,
+        addWatermark,
+        apiUrl: typeof apiUrl !== 'undefined' ? apiUrl : null,
+        requestBody: typeof requestBody !== 'undefined' ? requestBody : null,
+        error: error && error.message ? error.message : error
+      });
+      throw error;
+    }
+  };
+
+  try {
+    const client = await auth.getClient();
+    const accessToken = (await client.getAccessToken()).token;
+
+    if (!accessToken) {
+      throw new HttpsError('internal', 'Failed to acquire access token for Imagen4.');
+    }
+
+    const base64Data = await callImagen4API(accessToken);
+
+    // 上传到Firebase Storage
+    const bucketName = UTILS.getBucketName();
+    const bucket = admin.storage().bucket(bucketName);
+    const fileName = `tale-images-v4/${request.auth.uid}/${Date.now()}_page_${pageIndex}.jpg`;
+    const file = bucket.file(fileName);
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    await file.save(imageBuffer, {
+      metadata: {
+        contentType: 'image/jpeg',
+        metadata: {
+          userId: request.auth.uid,
+          pageIndex: pageIndex.toString(),
+          prompt: prompt.substring(0, 500)
+        }
+      }
+    });
+
+    await file.makePublic();
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    return { imageUrl: publicUrl, pageIndex: pageIndex, success: true };
+
+  } catch (error) {
+    let errorMessage = `Failed to generate image (Imagen 4): ${error.message}`;
+    if (error.status) {
+      errorMessage += ` (HTTP ${error.status})`;
+    }
+    throw new HttpsError('internal', errorMessage);
+  }
+});
+
+exports.generateImageBatchV4 = onCall({
+  memory: '2GB',
+  timeoutSeconds: 900
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  const { prompts } = request.data;
+  if (!prompts || !Array.isArray(prompts)) {
+    throw new HttpsError('invalid-argument', 'Prompts array is required');
+  }
+
+  try {
+    const results = [];
+    for (let i = 0; i < prompts.length; i++) {
+      try {
+        const imageRequest = {
+          auth: request.auth,
+          data: { ...prompts[i], pageIndex: i }
+        };
+        const result = await exports.generateImageV4(imageRequest);
+        results.push({ pageIndex: i, success: true, imageUrl: result.imageUrl });
+      } catch (error) {
+        results.push({ pageIndex: i, success: false, error: error.message });
+      }
+    }
+    return { results: results, totalPages: prompts.length, successCount: results.filter(r => r.success).length };
+  } catch (error) {
+    throw new HttpsError('internal', `Batch generation (Imagen 4) failed: ${error.message}`);
+  }
+});
+
+// 新增：流式故事生成函数
+exports.generateTaleStream = onRequest(
+  { memory: '1GB', timeoutSeconds: 300, region: 'us-central1' },
+  (request, response) => {
+    cors(request, response, async () => {
+      response.setHeader('Content-Type', 'text/event-stream');
+      response.setHeader('Cache-Control', 'no-cache');
+      response.setHeader('Connection', 'keep-alive');
+
+      const authHeader = request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        response.status(401).send('Unauthorized');
+        return;
+      }
+      const idToken = authHeader.split('Bearer ')[1];
+      let decodedToken;
+      try {
+        decodedToken = await admin.auth().verifyIdToken(idToken);
+      } catch (error) {
+        response.status(401).send('Unauthorized');
+        return;
+      }
+      
+      try {
+        const { story, pageCount = 10 } = request.body;
+        
+        if (!story || !story.trim()) {
+          response.status(400).send('Story content is required');
+          return;
+        }
+
+        // 发送初始状态
+        response.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          step: 'initializing',
+          message: 'Initializing story generation process...' 
+        })}\n\n`);
+
+        // 获取访问令牌
+        const client = await auth.getClient();
+        const accessToken = (await client.getAccessToken()).token;
+        if (!accessToken) {
+          response.status(500).send('Failed to acquire access token');
+          return;
+        }
+
+        response.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          step: 'connecting',
+          message: 'Connecting to Gemini AI service...' 
+        })}\n\n`);
+
+        // 调用Gemini API进行流式生成
+        await callGeminiStream(accessToken, story, pageCount, response, decodedToken.uid);
+
+      } catch (error) {
+        console.error('Error in generateTaleStream:', error);
+        response.write(`data: ${JSON.stringify({ 
+          type: 'error', 
+          message: error.message 
+        })}\n\n`);
+        response.end();
+      }
+    });
+  });

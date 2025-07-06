@@ -758,6 +758,36 @@ function App() {
     setPages(updatedPages);
   };
 
+  // Update page text
+  const updatePageText = (pageIndex, newText) => {
+    const updatedPages = [...pages];
+    updatedPages[pageIndex] = {
+      ...updatedPages[pageIndex],
+      text: newText
+    };
+    setPages(updatedPages);
+    
+    // Save state
+    setTimeout(() => {
+      saveCurrentState();
+    }, 100);
+  };
+
+  // Update page title
+  const updatePageTitle = (pageIndex, newTitle) => {
+    const updatedPages = [...pages];
+    updatedPages[pageIndex] = {
+      ...updatedPages[pageIndex],
+      title: newTitle
+    };
+    setPages(updatedPages);
+    
+    // Save state
+    setTimeout(() => {
+      saveCurrentState();
+    }, 100);
+  };
+
   // Start editing title
   const handleStartEditTitle = () => {
     setEditedTitle(storyTitle || 'Your Story Book');
@@ -1286,6 +1316,8 @@ function App() {
                   allCharacters={allCharacters}
                   onRegenerateImage={regeneratePageImage}
                   onUpdatePrompt={updatePagePrompt}
+                  onUpdateText={updatePageText}
+                  onUpdateTitle={updatePageTitle}
                   isGenerating={loading && progress.includes(`${index + 1}`)}
                 />
               ))}

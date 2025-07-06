@@ -46,6 +46,99 @@
   overflow-wrap: break-word;
 }
 
+/* Editable page title styles */
+.editable-page-title {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  position: relative;
+  display: inline-block;
+}
+
+.editable-page-title:hover {
+  background: rgba(33, 150, 243, 0.1);
+  color: #1565c0;
+}
+
+.editable-page-title:after {
+  content: "✎";
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #999;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.editable-page-title:hover:after {
+  opacity: 1;
+}
+
+/* Title editor styles */
+.title-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 250px;
+}
+
+.title-input {
+  padding: 8px 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  background: white;
+  transition: border-color 0.3s ease;
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: #2196F3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.title-editor-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.title-save-btn,
+.title-cancel-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.title-save-btn {
+  background: #2196F3;
+  color: white;
+}
+
+.title-save-btn:hover {
+  background: #1976D2;
+}
+
+.title-cancel-btn {
+  background: #6c757d;
+  color: white;
+}
+
+.title-cancel-btn:hover {
+  background: #5a6268;
+}
+
 .status-badge {
   padding: 4px 12px;
   border-radius: 20px;
@@ -101,6 +194,100 @@
   margin: 0;
   line-height: 1.6;
   color: #333;
+}
+
+/* Editable text styles */
+.editable-text {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 4px;
+  padding: 4px;
+  margin: -4px;
+  position: relative;
+}
+
+.editable-text:hover {
+  background: rgba(33, 150, 243, 0.1);
+  color: #1565c0;
+}
+
+.editable-text:after {
+  content: "✎";
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #999;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.editable-text:hover:after {
+  opacity: 1;
+}
+
+/* Text editor styles */
+.text-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.text-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 80px;
+  background: white;
+  color: #333;
+  transition: border-color 0.3s ease;
+}
+
+.text-textarea:focus {
+  outline: none;
+  border-color: #2196F3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.text-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.text-save-btn,
+.text-cancel-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.text-save-btn {
+  background: #2196F3;
+  color: white;
+}
+
+.text-save-btn:hover {
+  background: #1976D2;
+}
+
+.text-cancel-btn {
+  background: #6c757d;
+  color: white;
+}
+
+.text-cancel-btn:hover {
+  background: #5a6268;
 }
 
 /* Image Area */

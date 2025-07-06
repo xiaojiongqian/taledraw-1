@@ -7,6 +7,8 @@ const PageItem = ({
   allCharacters,
   onRegenerateImage, 
   onUpdatePrompt, 
+  onUpdateText,
+  onUpdateTitle,
   isGenerating 
 }) => {
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
@@ -14,11 +16,25 @@ const PageItem = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [imageLoadError, setImageLoadError] = useState(false);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [editedText, setEditedText] = useState(page.text || '');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(page.title || '');
 
   // Sync page prompt changes to local edit state
   useEffect(() => {
     setEditedPrompt(page.imagePrompt || '');
   }, [page.imagePrompt]);
+
+  // Sync page text changes to local edit state
+  useEffect(() => {
+    setEditedText(page.text || '');
+  }, [page.text]);
+
+  // Sync page title changes to local edit state
+  useEffect(() => {
+    setEditedTitle(page.title || '');
+  }, [page.title]);
 
   // Reset image load error when image URL changes
   useEffect(() => {
@@ -54,6 +70,56 @@ const PageItem = ({
     // Collapse the section after triggering
     setIsEditingPrompt(false);
     setIsExpanded(false);
+  };
+
+  const handleTextClick = () => {
+    setIsEditingText(true);
+  };
+
+  const handleTextSave = () => {
+    const newText = editedText.trim();
+    if (newText !== page.text) {
+      onUpdateText(index, newText);
+    }
+    setIsEditingText(false);
+  };
+
+  const handleTextCancel = () => {
+    setEditedText(page.text || '');
+    setIsEditingText(false);
+  };
+
+  const handleTextKeyDown = (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      handleTextSave();
+    } else if (e.key === 'Escape') {
+      handleTextCancel();
+    }
+  };
+
+  const handleTitleClick = () => {
+    setIsEditingTitle(true);
+  };
+
+  const handleTitleSave = () => {
+    const newTitle = editedTitle.trim();
+    if (newTitle !== page.title) {
+      onUpdateTitle(index, newTitle);
+    }
+    setIsEditingTitle(false);
+  };
+
+  const handleTitleCancel = () => {
+    setEditedTitle(page.title || '');
+    setIsEditingTitle(false);
+  };
+
+  const handleTitleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleTitleSave();
+    } else if (e.key === 'Escape') {
+      handleTitleCancel();
+    }
   };
 
   const handleImageClick = () => {
@@ -581,7 +647,41 @@ const PageItem = ({
     <div className={`page-item ${page.status || 'unknown'}`}>
       <div className="page-header">
         <div className="page-number">
-          {page.title ? `${index + 1}. ${page.title}` : `${index + 1}.`}
+          {isEditingTitle ? (
+            <div className="title-editor">
+              <input
+                type="text"
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                onKeyDown={handleTitleKeyDown}
+                className="title-input"
+                placeholder="Enter page title..."
+                autoFocus
+              />
+              <div className="title-editor-actions">
+                <button 
+                  className="btn btn-primary title-save-btn"
+                  onClick={handleTitleSave}
+                >
+                  Save
+                </button>
+                <button 
+                  className="btn btn-secondary title-cancel-btn"
+                  onClick={handleTitleCancel}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="editable-page-title"
+              onClick={handleTitleClick}
+              title="Click to edit title"
+            >
+              {page.title ? `${index + 1}. ${page.title}` : `${index + 1}.`}
+            </div>
+          )}
         </div>
         <div className="page-status">
           <span className={`status-badge ${page.status || 'unknown'}`}>
@@ -592,7 +692,41 @@ const PageItem = ({
       
       <div className="page-content">
         <div className="page-text">
-          <p>{page.text}</p>
+          {isEditingText ? (
+            <div className="text-editor">
+              <textarea
+                value={editedText}
+                onChange={(e) => setEditedText(e.target.value)}
+                onKeyDown={handleTextKeyDown}
+                rows={4}
+                className="text-textarea"
+                placeholder="Enter page text..."
+                autoFocus
+              />
+              <div className="text-editor-actions">
+                <button 
+                  className="btn btn-primary text-save-btn"
+                  onClick={handleTextSave}
+                >
+                  Save
+                </button>
+                <button 
+                  className="btn btn-secondary text-cancel-btn"
+                  onClick={handleTextCancel}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p 
+              className="editable-text"
+              onClick={handleTextClick}
+              title="Click to edit text"
+            >
+              {page.text}
+            </p>
+          )}
         </div>
         
         <div className="page-image">
