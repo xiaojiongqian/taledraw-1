@@ -34,7 +34,7 @@ async function retryWithBackoff(asyncFn, maxRetries = 3, baseDelay = 1000, onRet
       
       // 计算延迟时间（指数退避 + 随机抖动）
       const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-      console.log(`第${attempt + 1}次重试失败，${delay.toFixed(0)}ms后重试...`);
+      console.log(`Attempt ${attempt + 1} failed, retrying in ${delay.toFixed(0)}ms...`);
       
       // 调用重试回调
       if (onRetry) {
@@ -86,8 +86,8 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     // 根据配置动态选择函数名
     const functionName = UTILS.getImageGenerationFunction(); 
     
-    console.log(UTILS.formatLogMessage(pageIndex, `生成图像 - 函数: ${functionName}, 版本: ${API_CONFIG.IMAGEN_API_VERSION}`));
-    console.log(`场景: ${sceneType}, 角色: [${sceneCharacters.join(', ')}]`);
+    console.log(UTILS.formatLogMessage(pageIndex, `Generating image - Function: ${functionName}, Version: ${API_CONFIG.IMAGEN_API_VERSION}`));
+    console.log(`Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
 
     const generateImage = httpsCallable(functions, functionName);
     

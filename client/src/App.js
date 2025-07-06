@@ -8,18 +8,20 @@ import AspectRatioSelector from './components/AspectRatioSelector';
 import CharacterManager from './components/CharacterManager';
 import PageItem from './components/PageItem';
 import PptxGenJS from 'pptxgenjs';
+import stateManager from './stateManager';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // 认证加载状态
   const appVersion = process.env.REACT_APP_VERSION || 'v0.2.2';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [story, setStory] = useState('');
-  const [storyTitle, setStoryTitle] = useState(''); // 自动生成的故事标题
-  const [pageCount, setPageCount] = useState(10); // 默认10页
-  const [aspectRatio, setAspectRatio] = useState('1:1'); // 默认1:1
-  const [artStyle, setArtStyle] = useState('儿童绘本插画风格'); // 新增艺术风格状态
-  const [allCharacters, setAllCharacters] = useState({}); // 新增所有角色信息状态
+  const [storyTitle, setStoryTitle] = useState(''); // Auto-generated story title
+  const [pageCount, setPageCount] = useState(10); // Default 10 pages
+  const [aspectRatio, setAspectRatio] = useState('1:1'); // Default 1:1
+  const [artStyle, setArtStyle] = useState('Children\'s picture book illustration style'); // Art style state
+  const [allCharacters, setAllCharacters] = useState({}); // All characters info state
   const [character, setCharacter] = useState({
     name: '',
     description: '',
@@ -27,34 +29,52 @@ function App() {
     referenceImagePreview: null,
     fidelity: 50,
     isAutoExtracted: false
-  }); // 角色状态
+  }); // Character state
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
-  const [logs, setLogs] = useState([]); // 生成过程日志
+  const [logs, setLogs] = useState([]); // Generation process logs
 
-  const abortControllerRef = useRef(null); // 使用ref来持续跟踪AbortController
-  const [showDebugWindow, setShowDebugWindow] = useState(false); // 调试窗口显示状态
-  const [isEditingTitle, setIsEditingTitle] = useState(false); // 标题编辑状态
-  const [editedTitle, setEditedTitle] = useState(''); // 编辑中的标题
-  const [showSaveOptions, setShowSaveOptions] = useState(false); // 保存选项
-  const logIdCounter = useRef(0); // 日志ID计数器
-  const logsContentRef = useRef(null); // 日志内容引用
+  const abortControllerRef = useRef(null); // Use ref to continuously track AbortController
+  const [showDebugWindow, setShowDebugWindow] = useState(false); // Debug window display state
+  const [isEditingTitle, setIsEditingTitle] = useState(false); // Title editing state
+  const [editedTitle, setEditedTitle] = useState(''); // Currently edited title
+  const [showSaveOptions, setShowSaveOptions] = useState(false); // Save options
+  const logIdCounter = useRef(0); // Log ID counter
+  const logsContentRef = useRef(null); // Log content reference
   const saveContainerRef = useRef(null); // Ref for the save container
-  const [storyWordCount, setStoryWordCount] = useState(0); // 新增字数状态
+  const [storyWordCount, setStoryWordCount] = useState(0); // Word count state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedResult, setGeneratedResult] = useState(null);
+  // State restoration related
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState('');
+  const [hasRestoredState, setHasRestoredState] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const previousUser = user;
       setUser(user);
+      setAuthLoading(false); // 认证状态确定后设置加载完成
+      
+      if (user) {
+        // If new user logs in, reset restoration state flag
+        if (!hasRestoredState || (previousUser && previousUser.email !== user.email)) {
+          setHasRestoredState(false);
+          await restoreStateForUser(user);
+          setHasRestoredState(true);
+        }
+      } else {
+        // User logs out, reset restoration state flag
+        setHasRestoredState(false);
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [hasRestoredState]);
 
-  // 自动滚动日志到底部
+  // Auto scroll logs to bottom
   useEffect(() => {
     if (logsContentRef.current) {
       logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
@@ -78,11 +98,11 @@ function App() {
     };
   }, [showSaveOptions]);
 
-  // 多语言字数统计函数
+  // Multilingual word count function
   function countWords(text) {
-    // 匹配所有CJK字符（中文、日文、韩文）
+    // Match all CJK characters (Chinese, Japanese, Korean)
     const cjk = text.match(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g) || [];
-    // 匹配所有非CJK的单词（包括阿拉伯语、英文等）
+    // Match all non-CJK words (including Arabic, English, etc.)
     const nonCjk = text
       .replace(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g, ' ')
       .trim()
@@ -90,6 +110,163 @@ function App() {
       .filter(Boolean);
     return cjk.length + nonCjk.length;
   }
+
+  // Restore state for user
+  const restoreStateForUser = async (user) => {
+    try {
+      const savedState = stateManager.restoreState();
+      if (!savedState) {
+        console.log('No saved state found');
+        return;
+      }
+
+      // Check if saved state belongs to current user
+      if (savedState.userEmail !== user.email) {
+        console.log('Saved state does not belong to current user, clearing old data');
+        stateManager.clearState();
+        return;
+      }
+
+      // Only restore if there is generated content
+      if (!savedState.hasGeneratedContent) {
+        console.log('No generated content to restore');
+        return;
+      }
+
+      setIsRestoring(true);
+      setRestoreProgress('Restoring your storybook state...');
+
+      // Restore basic state
+      setStory(savedState.story || '');
+      setStoryTitle(savedState.storyTitle || '');
+      setPageCount(savedState.pageCount || 10);
+      setAspectRatio(savedState.aspectRatio || '1:1');
+      setArtStyle(savedState.artStyle || '');
+      setAllCharacters(savedState.allCharacters || {});
+      setCharacter(savedState.character || {
+        name: '',
+        description: '',
+        referenceImage: null,
+        referenceImagePreview: null,
+        fidelity: 50,
+        isAutoExtracted: false
+      });
+      setStoryWordCount(savedState.storyWordCount || 0);
+      setGeneratedResult(savedState.generatedResult || null);
+
+      // Restore page state (keep images initially)
+      const restoredPages = (savedState.pages || []).map(page => ({
+        ...page,
+        // 保持原有图片，如果存在的话
+        image: page.image || null,
+        status: page.image ? 'completed' : 'pending'
+      }));
+      setPages(restoredPages);
+
+      // Verify and redownload images if needed
+      if (restoredPages.length > 0) {
+        await verifyAndRedownloadImages(restoredPages);
+      }
+
+      setRestoreProgress('State restoration completed!');
+      addLog('Successfully restored previous storybook state', 'success');
+    } catch (error) {
+      console.error('Failed to restore state:', error);
+      setRestoreProgress('State restoration failed');
+      addLog('Failed to restore state: ' + error.message, 'error');
+    } finally {
+      setIsRestoring(false);
+      // Delay clearing progress info
+      setTimeout(() => {
+        setRestoreProgress('');
+      }, 3000);
+    }
+  };
+
+  // Verify and redownload images if needed
+  const verifyAndRedownloadImages = async (pages) => {
+    setRestoreProgress('Verifying images...');
+    
+    const updatedPages = [...pages];
+    let verifiedCount = 0;
+    
+    for (let i = 0; i < updatedPages.length; i++) {
+      const page = updatedPages[i];
+      
+      if (page.image) {
+        try {
+          setRestoreProgress(`Verifying image ${i + 1}/${updatedPages.length}...`);
+          
+          // Create a lightweight image element to test loading
+          const img = new Image();
+          const loadPromise = new Promise((resolve, reject) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => reject(false);
+            img.src = page.image;
+          });
+          
+          // Wait for image to load or fail (with timeout)
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+          );
+          
+          await Promise.race([loadPromise, timeoutPromise]);
+          
+          // Image loads successfully, keep it
+          updatedPages[i] = {
+            ...page,
+            image: page.image,
+            status: 'completed'
+          };
+          verifiedCount++;
+          addLog(`Page ${i + 1} image verified successfully`, 'success');
+        } catch (error) {
+          console.log(`Page ${i + 1} image verification failed, but keeping URL:`, error);
+          // Keep the image URL but mark as completed (let user decide to regenerate)
+          updatedPages[i] = {
+            ...page,
+            image: page.image,
+            status: 'completed'
+          };
+          verifiedCount++;
+          addLog(`Page ${i + 1} image kept (may need regeneration)`, 'warning');
+        }
+      } else {
+        updatedPages[i] = {
+          ...page,
+          status: 'pending'
+        };
+        addLog(`Page ${i + 1} has no image URL`, 'warning');
+      }
+      
+      // Update page state in real-time
+      setPages([...updatedPages]);
+    }
+    
+    setRestoreProgress(`Image verification completed (${verifiedCount}/${updatedPages.length})`);
+  };
+
+  // Save current state
+  const saveCurrentState = () => {
+    if (user) {
+      const currentState = {
+        userEmail: user.email,
+        story,
+        storyTitle,
+        pageCount,
+        aspectRatio,
+        artStyle,
+        allCharacters,
+        character,
+        pages,
+        storyWordCount,
+        generatedResult,
+        isGenerating
+      };
+      
+      stateManager.saveState(currentState);
+    }
+  };
 
   const handleSignUp = async () => {
     setError('');
@@ -128,7 +305,9 @@ function App() {
         referenceImagePreview: null,
         fidelity: 50,
         isAutoExtracted: false
-      }); // 重置角色状态
+      }); // Reset character state
+      setHasRestoredState(false); // Reset restoration state flag
+      stateManager.clearState(); // Clear persistent state
       setProgress('Logged out');
     } catch (error) {
               setError("Logout error: " + error.message);
@@ -141,9 +320,9 @@ function App() {
     const wordLimit = 2000;
     let currentCount = countWords(newValue);
     let finalValue = newValue;
-    // 超出字数时进行截断
+    // Truncate when word limit exceeded
     if (currentCount > wordLimit) {
-      // 逐步截断，直到不超过限制
+      // Gradually truncate until within limit
       let temp = '';
       for (let i = 0, w = 0; i < newValue.length && w < wordLimit; i++) {
         temp += newValue[i];
@@ -165,7 +344,7 @@ function App() {
     setStoryWordCount(currentCount);
   };
 
-  // 添加日志函数
+  // Add log function
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     logIdCounter.current += 1;
@@ -198,21 +377,21 @@ function App() {
       return;
     }
 
-    // 创建新的AbortController
+    // Create new AbortController
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     setLoading(true);
     setIsGenerating(true);
-    setShowDebugWindow(true); // 自动显示调试窗口
+    setShowDebugWindow(true); // Auto show debug window
     setPages([]);
     setGeneratedResult(null);
     setStoryTitle('');
     setArtStyle('');
     setAllCharacters({});
     setError(null);
-    setLogs([]); // 清空旧日志
-    logIdCounter.current = 0; // 重置日志计数器
+    setLogs([]); // Clear old logs
+    logIdCounter.current = 0; // Reset log counter
     addLog('Starting story generation...', 'info');
 
     try {
@@ -234,6 +413,11 @@ function App() {
       setGeneratedResult(taleData);
       setError(null); // 清除错误状态，表明故事生成成功
       addLog('Story structure generation completed, starting automatic image generation...', 'success');
+      
+      // Save current state
+      setTimeout(() => {
+        saveCurrentState();
+      }, 1000);
       
       // 自动生成所有图片 - 不重新设置loading状态，因为已经在生成过程中
       await generateAllImagesInternal(taleData.pages, taleData.allCharacters, taleData.artStyle);
@@ -361,6 +545,11 @@ function App() {
     // 生成完成总结 - 不设置loading状态，由调用者处理
     if (successCount > 0) {
       addLog(`Image generation completed! Success: ${successCount}, Failed: ${errorCount}`, 'success');
+      
+      // Save state after completion
+      setTimeout(() => {
+        saveCurrentState();
+      }, 1000);
     } else if (errorCount > 0) {
       addLog(`Image generation failed. Please check network connection and retry.`, 'error');
     }
@@ -402,12 +591,12 @@ function App() {
 
   const clearStory = () => {
     setStory('');
-    setStoryTitle(''); // 清空故事标题
-    setIsEditingTitle(false); // 重置标题编辑状态
-    setEditedTitle(''); // 清空编辑中的标题
+    setStoryTitle(''); // Clear story title
+    setIsEditingTitle(false); // Reset title editing state
+    setEditedTitle(''); // Clear edited title
     setPages([]);
-    setPageCount(10); // 重置为默认值
-    setAspectRatio('1:1'); // 重置为默认值
+    setPageCount(10); // Reset to default value
+    setAspectRatio('1:1'); // Reset to default value
     setCharacter({
       name: '',
       description: '',
@@ -415,21 +604,22 @@ function App() {
       referenceImagePreview: null,
       fidelity: 50,
       isAutoExtracted: false
-    }); // 重置角色状态
+    }); // Reset character state
     setError('');
     setProgress('');
-    setLoading(false); // 重置loading状态
-    setIsGenerating(false); // 重置生成状态
-    setLogs([]); // 清空日志
-    logIdCounter.current = 0; // 重置日志计数器
-    setShowDebugWindow(false); // 隐藏调试窗口
+    setLoading(false); // Reset loading state
+    setIsGenerating(false); // Reset generation state
+    setLogs([]); // Clear logs
+    logIdCounter.current = 0; // Reset log counter
+    setShowDebugWindow(false); // Hide debug window
+    stateManager.clearState(); // Clear persistent state
   };
 
-  // 重新生成单个页面图像
+  // Regenerate single page image
   const regeneratePageImage = async (pageIndex, customPrompt = null) => {
-    // 检查用户是否已认证
+    // Check if user is authenticated
     if (!user) {
-      setError('请先登录以使用AI生成功能');
+      setError('Please log in to use AI generation features');
       addLog('User not authenticated', 'error');
       return;
     }
@@ -474,6 +664,11 @@ function App() {
       });
       setPages(finalPages);
       addLog(`Page ${pageIndex + 1} image regenerated successfully!`, 'success');
+      
+      // Save state
+      setTimeout(() => {
+        saveCurrentState();
+      }, 1000);
 
     } catch (error) {
       console.error(`Failed to regenerate page ${pageIndex + 1}:`, error);
@@ -494,7 +689,7 @@ function App() {
     }
   };
 
-  // 更新页面提示词
+  // Update page prompt
   const updatePagePrompt = (pageIndex, newPrompt) => {
     const updatedPages = [...pages];
     updatedPages[pageIndex] = {
@@ -504,19 +699,24 @@ function App() {
     setPages(updatedPages);
   };
 
-  // 开始编辑标题
+  // Start editing title
   const handleStartEditTitle = () => {
     setEditedTitle(storyTitle || 'Your Story Book');
     setIsEditingTitle(true);
   };
 
-  // 保存标题
+  // Save title
   const handleSaveTitle = () => {
     setStoryTitle(editedTitle.trim() || 'Your Story Book');
     setIsEditingTitle(false);
+    
+    // Save state
+    setTimeout(() => {
+      saveCurrentState();
+    }, 500);
   };
 
-  // 取消编辑标题
+  // Cancel editing title
   const handleCancelEditTitle = () => {
     setEditedTitle('');
     setIsEditingTitle(false);
@@ -535,14 +735,14 @@ function App() {
     setShowSaveOptions(false);
 
     let pptx = new PptxGenJS();
-    pptx.title = storyTitle || '我的故事绘本';
+    pptx.title = storyTitle || 'My Story Book';
 
     // Helper function to fetch and convert image to Base64
     const toBase64 = async (url) => {
       try {
         const response = await fetch(url);
         if (!response.ok) {
-          throw new Error(`图片加载失败: ${response.statusText}`);
+          throw new Error(`Image loading failed: ${response.statusText}`);
         }
         const blob = await response.blob();
         return new Promise((resolve, reject) => {
@@ -552,25 +752,25 @@ function App() {
           reader.readAsDataURL(blob);
         });
       } catch (e) {
-        console.error(`获取图片 ${url} 时出现CORS或网络错误。`, 'error');
-        addLog(`图片获取失败 ${url}，可能是CORS策略所致。`, 'error');
+        console.error(`CORS or network error when getting image ${url}.`, 'error');
+        addLog(`Image retrieval failed ${url}, possibly due to CORS policy.`, 'error');
         throw e;
       }
     };
 
     for (const [index, page] of pages.entries()) {
-      addLog(`正在处理第 ${index + 1} 页...`, 'info');
+      addLog(`Processing page ${index + 1}...`, 'info');
       let slide = pptx.addSlide();
-      slide.addText(storyTitle || '我的故事绘本', { x: 0.5, y: 0.25, w: '90%', h: 0.5, fontSize: 18, bold: true });
-      slide.addText(page.title || `第 ${index + 1} 页`, { x: 0.5, y: 0.8, w: '90%', h: 0.4, fontSize: 14 });
+      slide.addText(storyTitle || 'My Story Book', { x: 0.5, y: 0.25, w: '90%', h: 0.5, fontSize: 18, bold: true });
+      slide.addText(page.title || `Page ${index + 1}`, { x: 0.5, y: 0.8, w: '90%', h: 0.4, fontSize: 14 });
       
       if (page.image && page.status === 'success') {
         try {
-          addLog(`正在转换第 ${index + 1} 页的图片...`, 'info');
+          addLog(`Converting image for page ${index + 1}...`, 'info');
           const imageBase64 = await toBase64(page.image);
           slide.addImage({ data: imageBase64, x: '10%', y: '25%', w: '80%', h: '45%' });
         } catch (error) {
-           addLog(`无法添加第 ${index + 1} 页的图片: ${error.message}`, 'error');
+           addLog(`Unable to add image for page ${index + 1}: ${error.message}`, 'error');
         }
       }
 
@@ -580,10 +780,10 @@ function App() {
     const safeTitle = (storyTitle || 'storybook').replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
     pptx.writeFile({ fileName: `${safeTitle}.pptx` })
       .then(fileName => {
-        addLog(`PPTX文件已成功下载: ${fileName}`, 'success');
+        addLog(`PPTX file downloaded successfully: ${fileName}`, 'success');
       })
       .catch(err => {
-        addLog(`保存PPTX失败: ${err.message}`, 'error');
+        addLog(`Failed to save PPTX: ${err.message}`, 'error');
         console.error(err);
       });
   };
@@ -595,9 +795,9 @@ function App() {
     }
 
     addLog('Preparing HTML file download...', 'info');
-    const originalButtonText = '保存';
+    const originalButtonText = 'Save';
     const button = document.querySelector('.save-button');
-    if (button) button.textContent = '处理中...';
+    if (button) button.textContent = 'Processing...';
 
 
     try {
@@ -605,7 +805,7 @@ function App() {
         try {
           const response = await fetch(url);
           if (!response.ok) {
-            throw new Error(`图片加载失败: ${response.statusText}`);
+            throw new Error(`Image loading failed: ${response.statusText}`);
           }
           const blob = await response.blob();
           return new Promise((resolve, reject) => {
@@ -615,8 +815,8 @@ function App() {
             reader.readAsDataURL(blob);
           });
         } catch (e) {
-          console.error(`获取图片 ${url} 时出现CORS或网络错误。`);
-          addLog(`图片获取失败 ${url}，可能是CORS策略所致。`, 'error');
+          console.error(`CORS or network error when getting image ${url}.`);
+          addLog(`Image retrieval failed ${url}, possibly due to CORS policy.`, 'error');
           throw e; // re-throw error
         }
       };
@@ -626,10 +826,10 @@ function App() {
           let imageBase64 = null;
           if (page.image && page.status === 'success') {
             try {
-              addLog(`正在转换第 ${index + 1} 页的图片...`, 'info');
+              addLog(`Converting image for page ${index + 1}...`, 'info');
               imageBase64 = await toBase64(page.image);
             } catch (error) {
-              addLog(`无法转换第 ${index + 1} 页的图片: ${error.message}`, 'error');
+              addLog(`Unable to convert image for page ${index + 1}: ${error.message}`, 'error');
             }
           }
           return { ...page, imageBase64 };
@@ -642,7 +842,7 @@ function App() {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${storyTitle || '我的故事绘本'}</title>
+          <title>${storyTitle || 'My Story Book'}</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
             .container { max-width: 800px; margin: auto; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
@@ -658,11 +858,11 @@ function App() {
         </head>
         <body>
           <div class="container">
-            <h1>${storyTitle || '我的故事绘本'}</h1>
+            <h1>${storyTitle || 'My Story Book'}</h1>
             ${pagesWithBase64Images.map((page, index) => `
               <div class="page">
                 <h2>${page.title ? `${index + 1}. ${page.title}` : `${index + 1}.`}</h2>
-                ${page.imageBase64 ? `<img src="${page.imageBase64}" alt="第 ${index + 1} 页插图">` : '<p><em>图片加载失败或未生成</em></p>'}
+                ${page.imageBase64 ? `<img src="${page.imageBase64}" alt="Page ${index + 1} illustration">` : '<p><em>Image loading failed or not generated</em></p>'}
                 <p>${page.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
               </div>
             `).join('')}
@@ -681,9 +881,9 @@ function App() {
       document.body.removeChild(link);
       addLog('HTML file downloaded successfully!', 'success');
     } catch (error) {
-      console.error('保存为HTML时出错:', error);
-      setError('保存HTML失败: ' + error.message);
-      addLog(`保存HTML失败: ${error.message}`, 'error');
+      console.error('Error saving as HTML:', error);
+      setError('Failed to save HTML: ' + error.message);
+      addLog(`Failed to save HTML: ${error.message}`, 'error');
     } finally {
       if (button) button.textContent = originalButtonText;
       setShowSaveOptions(false); // Close options menu
@@ -694,6 +894,62 @@ function App() {
   useEffect(() => {
     setStoryWordCount(countWords(story));
   }, []);
+
+  // 定期保存状态 - 防止意外刷新导致状态丢失
+  useEffect(() => {
+    const saveInterval = setInterval(() => {
+      if (user && (pages.length > 0 || story.trim())) {
+        saveCurrentState();
+      }
+    }, 30000); // 每30秒保存一次
+
+    return () => clearInterval(saveInterval);
+  }, [user, pages, story, storyTitle, pageCount, aspectRatio, artStyle, allCharacters, character, storyWordCount, generatedResult, isGenerating]);
+
+  // 页面卸载时保存状态
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (user && (pages.length > 0 || story.trim())) {
+        saveCurrentState();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [user, pages, story, storyTitle, pageCount, aspectRatio, artStyle, allCharacters, character, storyWordCount, generatedResult, isGenerating]);
+
+  // 初始化时检查并准备状态恢复
+  useEffect(() => {
+    const initializeApp = async () => {
+      // 检查是否有保存的状态
+      const stateInfo = stateManager.getStateInfo();
+      if (stateInfo && stateInfo.hasGeneratedContent) {
+        console.log('Found saved state, will restore after authentication');
+        // 设置认证加载状态，让用户知道正在加载
+        setAuthLoading(true);
+      }
+    };
+
+    initializeApp();
+  }, []);
+
+  // 认证加载状态 - 显示加载界面而不是登录界面
+  if (authLoading) {
+    return (
+      <div className="App">
+        <header className="App-header">
+          <h1>📚 AI Story Book Generator</h1>
+          <p>Generate beautiful illustrated storybooks for your stories using AI technology</p>
+        </header>
+        <main className="auth-container">
+          <div className="auth-form">
+            <div className="loading-spinner"></div>
+            <p>Loading...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   // 登录/注册界面
   if (!user) {
@@ -777,7 +1033,7 @@ function App() {
               disabled={loading}
             />
             
-            {/* 字数计数显示 */}
+            {/* Word count display */}
             <div className="character-count">
               <span className={storyWordCount > 1800 ? 'count-warning' : storyWordCount > 1500 ? 'count-notice' : ''}>
                 {storyWordCount}/2000 words
@@ -789,9 +1045,9 @@ function App() {
               )}
             </div>
             
-            {/* 参数设置区域 */}
+            {/* Parameter settings area */}
             <div className="story-settings">
-              {/* 基础设置组合 */}
+              {/* Basic settings combination */}
               <div className="basic-settings">
                 <PageSelector 
                   pageCount={pageCount}
@@ -805,7 +1061,7 @@ function App() {
                 />
               </div>
               
-              {/* 角色设置单独区域 */}
+              {/* Character settings separate area */}
               <CharacterManager
                 story={story}
                 character={character}
@@ -846,13 +1102,14 @@ function App() {
           {error && !showDebugWindow && <div className="error-message">{error}</div>}
         </div>
 
-        {(loading || showDebugWindow) && (
+        {(loading || showDebugWindow || isRestoring) && (
           <div className="loading-section">
             <div className="loading-header">
               <div className="loading-info">
-                {loading && <div className="loading-spinner"></div>}
+                {(loading || isRestoring) && <div className="loading-spinner"></div>}
                 <p>
-                  {loading ? 'Generating your story book, please wait...' : 
+                  {isRestoring ? restoreProgress || 'Restoring storybook state...' :
+                   loading ? 'Generating your story book, please wait...' : 
                    error ? 'Issues encountered during generation' : 
                    'Generation completed'}
                 </p>
@@ -865,18 +1122,18 @@ function App() {
                   >
                     Stop Generation
                   </button>
-                ) : (
+                ) : !isRestoring ? (
                   <button 
                     onClick={() => setShowDebugWindow(false)}
                     className="close-debug-button"
                   >
                     ×
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
             
-            {/* 生成日志显示区域 */}
+            {/* Generation logs display area */}
             <div className="generation-logs">
               <div className="logs-content" ref={logsContentRef}>
                 {logs.map(log => (
@@ -954,16 +1211,6 @@ function App() {
             </div>
             
             <div className="tale-actions">
-              {/* Show continue generation button if there are pending images */}
-              {pages.some(page => !page.image || page.status === 'error') && !loading && (
-                <button 
-                  onClick={() => generateAllImages(pages, allCharacters, artStyle)} 
-                  className="continue-generation-button"
-                  disabled={loading}
-                >
-                  🎨 Continue Image Generation
-                </button>
-              )}
               <button onClick={clearStory} className="new-story-button">
                 ✨ Create New Story
               </button>

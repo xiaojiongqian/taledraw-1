@@ -4,16 +4,16 @@ import { extractCharacter, generateCharacterAvatar } from '../api';
 
 const CharacterManager = ({ story, character, onCharacterChange, disabled = false }) => {
   const [isExtracting, setIsExtracting] = useState(false);
-  const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false); // 控制角色形象生成状态
+  const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false); // Control character avatar generation state
   const [extractionError, setExtractionError] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false); // 控制高级设置显示
-  const [isExpanded, setIsExpanded] = useState(false); // 控制角色设置展开/收缩
+  const [showAdvanced, setShowAdvanced] = useState(false); // Control advanced settings display
+  const [isExpanded, setIsExpanded] = useState(false); // Control character settings expand/collapse
   const fileInputRef = useRef(null);
 
-  // 自动提取角色
+  // Auto extract character
   const handleExtractCharacter = async () => {
     if (!story.trim()) {
-      setExtractionError('请先输入故事内容');
+      setExtractionError('Please enter story content first');
       return;
     }
 
@@ -23,26 +23,26 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
     try {
       const data = await extractCharacter(story.trim());
       
-      // 更新角色信息，保留现有的参考图片和遵循度
+      // Update character info, keeping existing reference image and fidelity
       onCharacterChange({
         ...character,
-        name: data.name || '主角',
+        name: data.name || 'Protagonist',
         description: data.description || '',
         isAutoExtracted: true
       });
 
     } catch (error) {
-      console.error('角色提取错误:', error);
-      setExtractionError(error.message || '角色提取失败');
+      console.error('Character extraction error:', error);
+      setExtractionError(error.message || 'Character extraction failed');
     } finally {
       setIsExtracting(false);
     }
   };
 
-  // 生成角色形象
+  // Generate character avatar
   const handleGenerateAvatar = async () => {
     if (!character.name || !character.description) {
-      setExtractionError('请先输入角色名称和描述');
+      setExtractionError('Please enter character name and description first');
       return;
     }
 
@@ -53,12 +53,12 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
       const result = await generateCharacterAvatar(
         character.name,
         character.description,
-        '', // 移除负向提示参数
+        '', // Remove negative prompt parameter
         character.referenceImage,
         character.fidelity || 50
       );
       
-      // 更新角色信息，添加生成的形象
+      // Update character info, add generated avatar
       onCharacterChange({
         ...character,
         avatarImage: result.imageUrl,
@@ -66,32 +66,32 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
         avatarGeneratedAt: result.generatedAt
       });
 
-      console.log('角色形象生成成功:', result);
+              console.log('Character avatar generated successfully:', result);
 
     } catch (error) {
-      console.error('角色形象生成错误:', error);
-      setExtractionError(error.message || '角色形象生成失败');
+      console.error('Character avatar generation error:', error);
+      setExtractionError(error.message || 'Character avatar generation failed');
     } finally {
       setIsGeneratingAvatar(false);
     }
   };
 
-  // 处理参考图片上传
+  // Handle reference image upload
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
-      // 检查文件类型和大小
-      if (!file.type.startsWith('image/')) {
-        setExtractionError('请选择图片文件');
-        return;
-      }
+          // Check file type and size
+    if (!file.type.startsWith('image/')) {
+      setExtractionError('Please select an image file');
+      return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      setExtractionError('Image size cannot exceed 5MB');
+      return;
+    }
 
-      if (file.size > 5 * 1024 * 1024) { // 5MB限制
-        setExtractionError('图片大小不能超过5MB');
-        return;
-      }
-
-      // 创建FileReader来预览图片
+      // Create FileReader to preview image
       const reader = new FileReader();
       reader.onload = (e) => {
         onCharacterChange({
@@ -105,7 +105,7 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
     }
   };
 
-  // 删除参考图片
+  // Remove reference image
   const handleRemoveImage = () => {
     onCharacterChange({
       ...character,
@@ -117,7 +117,7 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
     }
   };
 
-  // 更新角色名称
+  // Update character name
   const handleNameChange = (event) => {
     onCharacterChange({
       ...character,
@@ -133,7 +133,7 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
     });
   };
 
-  // 更新遵循度
+  // Update fidelity
   const handleFidelityChange = (event) => {
     onCharacterChange({
       ...character,
@@ -143,7 +143,7 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
 
   return (
     <div className="character-manager">
-      {/* 角色设置标题和展开/收缩按钮 */}
+      {/* Character settings title and expand/collapse button */}
       <div className="character-header">
         <button
           type="button"
@@ -152,7 +152,7 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
           disabled={disabled}
         >
           <span className={`toggle-icon ${isExpanded ? 'expanded' : ''}`}>▶</span>
-          角色设置
+          Character Settings
         </button>
       </div>
 
@@ -163,37 +163,37 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
           )}
 
           <div className="character-content">
-            {/* 左侧：角色信息编辑 */}
+            {/* Left side: Character info editing */}
             <div className="character-form">
-              {/* 角色基础信息组 */}
+              {/* Character basic info group */}
               <div className="character-basic-group">
-                {/* 角色名称 */}
+                {/* Character name */}
                 <div className="form-group">
-                  <label className="form-label">角色名称</label>
+                  <label className="form-label">Character Name</label>
                   <input
                     type="text"
                     value={character.name || ''}
                     onChange={handleNameChange}
-                    placeholder="主要角色名称"
+                    placeholder="Main character name"
                     disabled={disabled}
                     className="character-input"
                   />
                 </div>
 
-                {/* 角色描述 */}
+                {/* Character description */}
                 <div className="form-group">
-                  <label className="form-label">形象描述</label>
+                  <label className="form-label">Appearance Description</label>
                   <textarea
                     value={character.description || ''}
                     onChange={handleDescriptionChange}
-                    placeholder="描述角色的外观特征、穿着等..."
+                    placeholder="Describe the character's appearance, clothing, etc..."
                     disabled={disabled}
                     className="character-textarea"
                     rows="1"
                   />
                 </div>
 
-                {/* 自动提取按钮 */}
+                {/* Auto extract button */}
                 <div className="extract-section">
                   <button
                     type="button"
@@ -201,13 +201,13 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                     disabled={disabled || isExtracting || !story.trim()}
                     className="extract-button"
                   >
-                    {isExtracting ? '提取中...' : '(1) 自动提取'}
+                    {isExtracting ? 'Extracting...' : '(1) Auto Extract'}
                   </button>
-                  <span className="extract-hint">基于故事内容自动生成角色信息</span>
+                  <span className="extract-hint">Automatically generate character info based on story content</span>
                 </div>
               </div>
 
-              {/* 高级设置折叠区域 */}
+              {/* Advanced settings collapsible area */}
               <div className="advanced-settings">
                 <button
                   type="button"
@@ -216,20 +216,20 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                   disabled={disabled}
                 >
                   <span className={`toggle-icon ${showAdvanced ? 'expanded' : ''}`}>▶</span>
-                  高级设置
+                  Advanced Settings
                 </button>
 
                 {showAdvanced && (
                   <div className="advanced-content">
-                    {/* 参考图片上传 */}
+                    {/* Reference image upload */}
                     <div className="form-group">
-                      <label className="form-label">参考图片</label>
+                      <label className="form-label">Reference Image</label>
                       <div className="image-upload-section">
                         {character.referenceImagePreview ? (
                           <div className="image-preview">
                             <img 
                               src={character.referenceImagePreview} 
-                              alt="角色参考图片"
+                              alt="Character reference image"
                               className="preview-image"
                             />
                             <button
@@ -258,8 +258,8 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                             >
                               <div className="upload-content">
                                 <span className="upload-icon">📷</span>
-                                <span className="upload-text">上传参考图片</span>
-                                <span className="upload-hint">支持 JPG, PNG 格式，最大 5MB</span>
+                                <span className="upload-text">Upload Reference Image</span>
+                                <span className="upload-hint">Supports JPG, PNG format, max 5MB</span>
                               </div>
                             </label>
                           </div>
@@ -267,10 +267,10 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                       </div>
                     </div>
 
-                    {/* 遵循度设置 */}
+                    {/* Fidelity settings */}
                     <div className="form-group">
                       <label className="form-label">
-                        参考图片遵循度
+                        Reference Image Fidelity
                         <span className="fidelity-value">{character.fidelity || 50}%</span>
                       </label>
                       <div className="fidelity-slider-container">
@@ -284,17 +284,17 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                           className="fidelity-slider"
                         />
                         <div className="slider-labels">
-                          <span>创意优先</span>
-                          <span>平衡</span>
-                          <span>严格遵循</span>
+                          <span>Creative Priority</span>
+                          <span>Balanced</span>
+                          <span>Strict Adherence</span>
                         </div>
                       </div>
                       {character.referenceImage && (
                         <div className="fidelity-description">
                           <span className="fidelity-info">
-                            {character.fidelity <= 30 && "允许更多创意变化"}
-                            {character.fidelity > 30 && character.fidelity <= 70 && "平衡创意与参考"}
-                            {character.fidelity > 70 && "严格遵循参考图片"}
+                            {character.fidelity <= 30 && "Allow more creative variations"}
+                            {character.fidelity > 30 && character.fidelity <= 70 && "Balance creativity with reference"}
+                            {character.fidelity > 70 && "Strictly follow reference image"}
                           </span>
                         </div>
                       )}
@@ -304,20 +304,20 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
               </div>
             </div>
 
-            {/* 右侧：角色形象预览 */}
+            {/* Right side: Character avatar preview */}
             <div className="character-preview">
-              <div className="preview-header">角色形象</div>
+              <div className="preview-header">Character Avatar</div>
               <div className="character-avatar">
                 {character.avatarImage ? (
-                  // 显示生成的角色形象
+                  // Show generated character avatar
                   <div className="avatar-generated">
                     <img 
                       src={character.avatarImage} 
-                      alt={character.name || '角色形象'}
+                      alt={character.name || 'Character Avatar'}
                       className="avatar-image"
                     />
                     <div className="avatar-info">
-                      <div className="avatar-name">{character.name || '角色'}</div>
+                      <div className="avatar-name">{character.name || 'Character'}</div>
                       <div className="avatar-timestamp">
                         {character.avatarGeneratedAt && new Date(character.avatarGeneratedAt).toLocaleString('zh-CN', {
                           month: 'short',
@@ -329,24 +329,24 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                     </div>
                   </div>
                 ) : character.name || character.description ? (
-                  // 显示角色信息占位符
+                  // Show character info placeholder
                   <div className="avatar-placeholder">
                     <span className="avatar-icon">👤</span>
                     <div className="avatar-info">
-                      <div className="avatar-name">{character.name || '角色'}</div>
+                      <div className="avatar-name">{character.name || 'Character'}</div>
                       <div className="avatar-desc">
                         {character.description ? 
                           `${character.description.substring(0, 60)}${character.description.length > 60 ? '...' : ''}` : 
-                          '暂无描述'
+                          'No description'
                         }
                       </div>
                     </div>
                   </div>
                 ) : (
-                  // 空状态
+                  // Empty state
                   <div className="avatar-empty">
-                    <span className="empty-icon">暂无</span>
-                    <span className="empty-text">提取角色后显示</span>
+                    <span className="empty-icon">None</span>
+                    <span className="empty-text">Show after extracting character</span>
                   </div>
                 )}
               </div>
@@ -357,14 +357,14 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                 className="generate-avatar-button"
               >
                 <span className="generate-icon">✨</span>
-                {isGeneratingAvatar ? '生成中...' : '(2) 生成角色形象'}
+                {isGeneratingAvatar ? 'Generating...' : '(2) Generate Character Avatar'}
               </button>
             </div>
           </div>
 
           {character.isAutoExtracted && (
             <div className="auto-extracted-note">
-              ✨ 已自动提取角色信息，您可以继续编辑
+              ✨ Character information auto-extracted, you can continue editing
             </div>
           )}
         </div>

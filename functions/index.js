@@ -152,7 +152,7 @@ async function retryWithBackoff(asyncFn, maxRetries = 2, baseDelay = 1000) {
       
       // 计算延迟时间（指数退避 + 随机抖动）
       const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500;
-      console.log(`Imagen API第${attempt + 1}次调用失败，${delay.toFixed(0)}ms后重试...`);
+              console.log(`Imagen API attempt ${attempt + 1} failed, retrying in ${delay.toFixed(0)}ms...`);
       
       await new Promise(resolve => setTimeout(resolve, delay));
     }

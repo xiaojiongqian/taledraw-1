@@ -14,7 +14,7 @@ const PageItem = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
 
-  // 同步页面提示词变化到本地编辑状态
+  // Sync page prompt changes to local edit state
   useEffect(() => {
     setEditedPrompt(page.imagePrompt || '');
   }, [page.imagePrompt]);
@@ -53,14 +53,14 @@ const PageItem = ({
   const getStatusText = () => {
     switch (page.status) {
       case 'success':
-        return '生成成功';
+        return 'Generated Successfully';
       case 'error':
-        return '生成失败';
+        return 'Generation Failed';
       case 'generating':
       case 'regenerating':
-        return '生成中...';
+        return 'Generating...';
       default:
-        return '未知状态';
+        return 'Unknown Status';
     }
   };
 
@@ -87,29 +87,29 @@ const PageItem = ({
             <div className="image-generating">
               <div className="generating-message-box">
                 <div className="loading-spinner"></div>
-                <p className="generating-title">正在重新生成...</p>
-                <small className="generating-subtitle">请稍候</small>
+                <p className="generating-title">Regenerating...</p>
+                <small className="generating-subtitle">Please wait</small>
               </div>
             </div>
           ) : page.status === 'generating' ? (
             <div className="image-generating">
               <div className="generating-message-box">
                 <div className="loading-spinner"></div>
-                <p className="generating-title">正在生成图像...</p>
-                <small className="generating-subtitle">请稍候，正在为您生成精美插图</small>
+                <p className="generating-title">Generating image...</p>
+                <small className="generating-subtitle">Please wait, creating beautiful illustrations for you</small>
               </div>
             </div>
           ) : page.status === 'error' ? (
             <div className="image-error">
               <div className="error-message-box">
-                <p className="error-title">生成失败</p>
+                <p className="error-title">Generation Failed</p>
                 <p className="error-detail">{page.error}</p>
                 <button 
                   className="regenerate-button"
                   onClick={handleSaveAndRegenerate}
                   disabled={isGenerating}
                 >
-                  重新生成
+                  Regenerate
                 </button>
               </div>
             </div>
@@ -117,7 +117,7 @@ const PageItem = ({
             <div className="image-container">
               <img 
                 src={page.image} 
-                alt={`${index + 1}. 插图`}
+                alt={`${index + 1}. Illustration`}
                 onError={(e) => {
                   console.error('Image load failed:', e.target.src);
                 }}
@@ -127,22 +127,22 @@ const PageItem = ({
                   className="regenerate-overlay-button"
                   onClick={handleSaveAndRegenerate}
                   disabled={isGenerating}
-                  title="重新生成图像"
+                  title="Regenerate image"
                 >
-                  {isGenerating ? '生成中...' : '重新生成'}
+                  {isGenerating ? 'Generating...' : 'Regenerate'}
                 </button>
               </div>
             </div>
           ) : (
             <div className="image-pending">
               <div className="pending-message-box">
-                <p className="pending-title">等待生成</p>
+                <p className="pending-title">Waiting to generate</p>
                 <button 
                   className="regenerate-button"
                   onClick={handleSaveAndRegenerate}
                   disabled={isGenerating}
                 >
-                  生成图像
+                  Generate Image
                 </button>
               </div>
             </div>
@@ -157,7 +157,7 @@ const PageItem = ({
               className="expand-button"
               onClick={handleExpandClick}
             >
-              {isExpanded ? '收起提示词' : '提示词'}
+              {isExpanded ? 'Hide Prompt' : 'Prompt'}
             </button>
           </div>
           
@@ -168,7 +168,7 @@ const PageItem = ({
                   value={editedPrompt}
                   onChange={(e) => setEditedPrompt(e.target.value)}
                   rows={4}
-                  placeholder="输入图像生成提示词..."
+                  placeholder="Enter image generation prompt..."
                   className="prompt-textarea"
                 />
                 <div className="editor-actions">
@@ -177,13 +177,13 @@ const PageItem = ({
                     onClick={handleSaveAndRegenerate}
                     disabled={isGenerating}
                   >
-                    保存并重新生成
+                    Save and Regenerate
                   </button>
                   <button 
                     className="btn btn-secondary"
                     onClick={handleCancelEdit}
                   >
-                    取消
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -200,9 +200,9 @@ const PageItem = ({
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '8px 0' }}
           >
             <small>
-              {page.sceneType && <span className="scene-type">场景: {page.sceneType}</span>}
+              {page.sceneType && <span className="scene-type">Scene: {page.sceneType}</span>}
               {page.sceneCharacters && page.sceneCharacters.length > 0 && (
-                <span className="scene-characters"> | 角色: {page.sceneCharacters.join(', ')}</span>
+                <span className="scene-characters"> | Characters: {page.sceneCharacters.join(', ')}</span>
               )}
             </small>
           </div>
@@ -211,21 +211,21 @@ const PageItem = ({
             <div className="details-content" style={{ marginTop: '8px', paddingLeft: '24px', borderLeft: '2px solid #f0f0f0', marginLeft: '4px'}}>
               {page.scenePrompt && (
                 <div className="prompt-display" style={{ marginBottom: '12px' }}>
-                  <strong style={{ display: 'block', marginBottom: '4px', color: '#333' }}>场景提示词:</strong>
+                  <strong style={{ display: 'block', marginBottom: '4px', color: '#333' }}>Scene Prompt:</strong>
                   <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.9em', color: '#666' }}>{page.scenePrompt}</p>
                 </div>
               )}
 
               {page.sceneCharacters && page.sceneCharacters.length > 0 && (
                 <div className="character-details">
-                  <strong style={{ display: 'block', marginBottom: '8px', color: '#333' }}>角色详情:</strong>
+                  <strong style={{ display: 'block', marginBottom: '8px', color: '#333' }}>Character Details:</strong>
                   {page.sceneCharacters.map(characterName => {
                     const character = allCharacters[characterName];
                     if (!character) {
                       return (
                         <div key={characterName} style={{ marginBottom: '8px' }}>
                           <p style={{ margin: 0, fontWeight: 'bold', color: '#555' }}>{characterName}</p>
-                          <p style={{ margin: 0, fontSize: '0.9em', color: '#888' }}>未找到详细描述。</p>
+                          <p style={{ margin: 0, fontSize: '0.9em', color: '#888' }}>Detailed description not found.</p>
                         </div>
                       );
                     }
@@ -233,9 +233,9 @@ const PageItem = ({
                       <div key={characterName} style={{ marginBottom: '12px', paddingLeft: '12px' }}>
                         <p style={{ margin: 0, fontWeight: 'bold', color: '#555' }}>{characterName}</p>
                         <ul style={{ margin: 0, paddingLeft: '20px', listStyleType: 'disc' }}>
-                          {character.appearance && <li style={{ fontSize: '0.9em', color: '#666' }}><strong>外貌:</strong> {character.appearance}</li>}
-                          {character.clothing && <li style={{ fontSize: '0.9em', color: '#666' }}><strong>衣着:</strong> {character.clothing}</li>}
-                          {character.personality && <li style={{ fontSize: '0.9em', color: '#666' }}><strong>性格:</strong> {character.personality}</li>}
+                          {character.appearance && <li style={{ fontSize: '0.9em', color: '#666' }}><strong>Appearance:</strong> {character.appearance}</li>}
+                          {character.clothing && <li style={{ fontSize: '0.9em', color: '#666' }}><strong>Clothing:</strong> {character.clothing}</li>}
+                          {character.personality && <li style={{ fontSize: '0.9em', color: '#666' }}><strong>Personality:</strong> {character.personality}</li>}
                         </ul>
                       </div>
                     );
@@ -244,7 +244,7 @@ const PageItem = ({
               )}
               
               {(!page.scenePrompt && (!page.sceneCharacters || page.sceneCharacters.length === 0)) && (
-                  <p style={{ margin: 0, color: '#888', fontSize: '0.9em' }}>无可用提示词或角色详情。</p>
+                  <p style={{ margin: 0, color: '#888', fontSize: '0.9em' }}>No available prompts or character details.</p>
               )}
             </div>
           )}

@@ -832,32 +832,7 @@ body {
   background: #1976D2;
 }
 
-.continue-generation-button {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  color: white;
-  border: none;
-  padding: 1rem 2rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-right: 1rem;
-}
 
-.continue-generation-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #218838, #1e7e34);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
-}
-
-.continue-generation-button:disabled {
-  background: #ccc;
-  color: #888;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
 
 /* 消息样式 */
 .error-message {
