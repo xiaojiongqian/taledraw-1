@@ -81,6 +81,13 @@ function App() {
     }
   }, [logs]);
 
+  // Save UI state when showDebugWindow or logs change
+  useEffect(() => {
+    if (user && hasRestoredState) {
+      saveCurrentUIState();
+    }
+  }, [showDebugWindow, logs, user, hasRestoredState]);
+
   // Click outside to close save options
   useEffect(() => {
     function handleClickOutside(event) {
@@ -117,6 +124,8 @@ function App() {
       const savedState = stateManager.restoreState();
       if (!savedState) {
         console.log('No saved state found');
+        // 仍然尝试恢复UI状态
+        await restoreUIStateForUser(user);
         return;
       }
 
@@ -124,12 +133,15 @@ function App() {
       if (savedState.userEmail !== user.email) {
         console.log('Saved state does not belong to current user, clearing old data');
         stateManager.clearState();
+        stateManager.clearUIState();
         return;
       }
 
       // Only restore if there is generated content
       if (!savedState.hasGeneratedContent) {
         console.log('No generated content to restore');
+        // 仍然尝试恢复UI状态
+        await restoreUIStateForUser(user);
         return;
       }
 
@@ -168,6 +180,9 @@ function App() {
         await verifyAndRedownloadImages(restoredPages);
       }
 
+      // Restore UI state
+      await restoreUIStateForUser(user);
+
       setRestoreProgress('State restoration completed!');
       addLog('Successfully restored previous storybook state', 'success');
     } catch (error) {
@@ -181,6 +196,45 @@ function App() {
         setRestoreProgress('');
       }, 3000);
     }
+  };
+
+  // Restore UI state for user
+  const restoreUIStateForUser = async (user) => {
+    try {
+      const savedUIState = stateManager.restoreUIState();
+      if (!savedUIState) {
+        console.log('No saved UI state found');
+        return;
+      }
+
+      // Check if saved UI state belongs to current user
+      if (savedUIState.userEmail !== user.email) {
+        console.log('Saved UI state does not belong to current user, clearing old UI data');
+        stateManager.clearUIState();
+        return;
+      }
+
+      // Restore UI state
+      setShowDebugWindow(savedUIState.showDebugWindow || false);
+      setLogs(savedUIState.logs || []);
+      
+      console.log('Successfully restored UI state');
+    } catch (error) {
+      console.error('Failed to restore UI state:', error);
+    }
+  };
+
+  // Save current UI state
+  const saveCurrentUIState = () => {
+    if (!user) return;
+    
+    const uiStateToSave = {
+      userEmail: user.email,
+      showDebugWindow: showDebugWindow,
+      logs: logs
+    };
+    
+    stateManager.saveUIState(uiStateToSave);
   };
 
   // Verify and redownload images if needed
@@ -306,8 +360,12 @@ function App() {
         fidelity: 50,
         isAutoExtracted: false
       }); // Reset character state
+      setLogs([]); // Clear logs
+      logIdCounter.current = 0; // Reset log counter
+      setShowDebugWindow(false); // Hide debug window
       setHasRestoredState(false); // Reset restoration state flag
       stateManager.clearState(); // Clear persistent state
+      stateManager.clearUIState(); // Clear UI state
       setProgress('Logged out');
     } catch (error) {
               setError("Logout error: " + error.message);
@@ -613,6 +671,7 @@ function App() {
     logIdCounter.current = 0; // Reset log counter
     setShowDebugWindow(false); // Hide debug window
     stateManager.clearState(); // Clear persistent state
+    stateManager.clearUIState(); // Clear UI state
   };
 
   // Regenerate single page image
@@ -1107,6 +1166,17 @@ function App() {
               <button onClick={clearStory} disabled={loading} className="btn btn-secondary">
                 Clear
               </button>
+              
+              {/* Debug Info Button - 只在有日志内容且调试窗口关闭时显示 */}
+              {!showDebugWindow && logs.length > 0 && (
+                <button 
+                  className="debug-info-button"
+                  onClick={() => setShowDebugWindow(true)}
+                  title="Show operation logs"
+                >
+                  <span className="info-icon">ⓘ</span>
+                </button>
+              )}
             </div>
           </div>
           

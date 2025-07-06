@@ -2,6 +2,7 @@
 class StateManager {
   constructor() {
     this.STORAGE_KEY = 'taledraw_app_state';
+    this.UI_STORAGE_KEY = 'taledraw_ui_state'; // 新增UI状态存储键
     this.VERSION = '1.0.0';
   }
 
@@ -41,6 +42,26 @@ class StateManager {
       return true;
     } catch (error) {
       console.error('Failed to save state:', error);
+      return false;
+    }
+  }
+
+  // Save UI state (like showDebugWindow)
+  saveUIState(uiState) {
+    try {
+      const uiStateToSave = {
+        version: this.VERSION,
+        timestamp: Date.now(),
+        userEmail: uiState.userEmail,
+        showDebugWindow: uiState.showDebugWindow,
+        logs: uiState.logs || []
+      };
+      
+      localStorage.setItem(this.UI_STORAGE_KEY, JSON.stringify(uiStateToSave));
+      console.log('UI state saved to localStorage');
+      return true;
+    } catch (error) {
+      console.error('Failed to save UI state:', error);
       return false;
     }
   }
@@ -90,6 +111,44 @@ class StateManager {
     }
   }
 
+  // Restore UI state
+  restoreUIState() {
+    try {
+      const savedUIState = localStorage.getItem(this.UI_STORAGE_KEY);
+      if (!savedUIState) {
+        console.log('No saved UI state found');
+        return null;
+      }
+
+      const parsedUIState = JSON.parse(savedUIState);
+      
+      // Check version compatibility
+      if (parsedUIState.version !== this.VERSION) {
+        console.warn('UI state version mismatch, clearing old UI data');
+        this.clearUIState();
+        return null;
+      }
+
+      // Check if UI state is expired (24 hours)
+      const now = Date.now();
+      const savedTime = parsedUIState.timestamp;
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      
+      if (now - savedTime > TWENTY_FOUR_HOURS) {
+        console.log('Saved UI state expired, clearing old UI data');
+        this.clearUIState();
+        return null;
+      }
+
+      console.log('Restoring UI state from localStorage');
+      return parsedUIState;
+    } catch (error) {
+      console.error('Failed to restore UI state:', error);
+      this.clearUIState();
+      return null;
+    }
+  }
+
   // Clear saved state
   clearState() {
     try {
@@ -100,11 +159,31 @@ class StateManager {
     }
   }
 
+  // Clear saved UI state
+  clearUIState() {
+    try {
+      localStorage.removeItem(this.UI_STORAGE_KEY);
+      console.log('Cleared saved UI state');
+    } catch (error) {
+      console.error('Failed to clear UI state:', error);
+    }
+  }
+
   // Check if there is persisted state
   hasPersistedState() {
     try {
       const savedState = localStorage.getItem(this.STORAGE_KEY);
       return savedState !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Check if there is persisted UI state
+  hasPersistedUIState() {
+    try {
+      const savedUIState = localStorage.getItem(this.UI_STORAGE_KEY);
+      return savedUIState !== null;
     } catch (error) {
       return false;
     }
