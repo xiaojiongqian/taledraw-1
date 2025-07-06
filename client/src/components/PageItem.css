@@ -128,33 +128,15 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.image-overlay {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.image-container:hover .image-overlay {
-  opacity: 1;
-}
-
-.regenerate-overlay-button {
-  background: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 4px 8px;
+/* Clickable image styles */
+.clickable-image {
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: background-color 0.3s ease;
-  white-space: nowrap;
+  transition: all 0.3s ease;
 }
 
-.regenerate-overlay-button:hover {
-  background: #1976D2;
+.clickable-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .image-generating {
@@ -212,6 +194,19 @@
   min-height: 200px;
   background: #f8f9fa;
   border: 2px dashed #dee2e6;
+  border-radius: 8px;
+}
+
+/* Image load error styles */
+.image-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: #f8f9fa;
+  border: 2px dashed #ffc107;
   border-radius: 8px;
 }
 
@@ -286,6 +281,26 @@
   background: #ccc;
   cursor: not-allowed;
 }
+
+/* Reload button styles */
+.reload-button {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+  margin-top: 12px;
+}
+
+.reload-button:hover {
+  background: #f57c00;
+}
+
+
 
 /* Prompt Section */
 .image-prompt-section {

@@ -159,7 +159,7 @@ function App() {
         ...page,
         // 保持原有图片，如果存在的话
         image: page.image || null,
-        status: page.image ? 'completed' : 'pending'
+        status: page.image ? 'success' : 'pending'
       }));
       setPages(restoredPages);
 
@@ -216,7 +216,7 @@ function App() {
           updatedPages[i] = {
             ...page,
             image: page.image,
-            status: 'completed'
+            status: 'success'
           };
           verifiedCount++;
           addLog(`Page ${i + 1} image verified successfully`, 'success');
@@ -226,7 +226,7 @@ function App() {
           updatedPages[i] = {
             ...page,
             image: page.image,
-            status: 'completed'
+            status: 'success'
           };
           verifiedCount++;
           addLog(`Page ${i + 1} image kept (may need regeneration)`, 'warning');
