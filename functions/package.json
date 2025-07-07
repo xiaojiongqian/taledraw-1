@@ -6,6 +6,11 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
+    "deploy:stream": "firebase deploy --only functions:generateTaleStream",
+    "deploy:tale": "firebase deploy --only functions:generateTale",
+    "deploy:image": "firebase deploy --only functions:generateImage,generateImageV4",
+    "deploy:core": "firebase deploy --only functions:generateTaleStream,generateTale,getTaleData",
+    "deploy:all-images": "firebase deploy --only functions:generateImage,generateImageV4,generateImageBatch,generateImageBatchV4",
     "logs": "firebase functions:log",
     "lint": "echo \"lint command disabled\"",
     "predeploy": "npm run lint"

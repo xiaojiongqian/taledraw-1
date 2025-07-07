@@ -430,6 +430,12 @@ function App() {
     });
   };
 
+  // Clear logs function
+  const clearLogs = () => {
+    setLogs([]);
+    addLog('Logs cleared', 'info');
+  };
+
 
 
   // Abort generation functionality
@@ -1159,7 +1165,7 @@ function App() {
     .page { margin-bottom: 40px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; page-break-inside: avoid; }
     .page img { max-width: 100%; height: auto; display: block; margin: 0 auto 15px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     .page p { text-align: justify; font-size: 1.1em; white-space: pre-wrap; }
-    .missing-image { text-align: center; color: #666; font-style: italic; background: #f8f9fa; padding: 20px; border-radius: 4px; margin: 0 auto 15px; }
+            .missing-image { text-align: center; color: var(--gray-color); font-style: italic; background: var(--gray-color-light); padding: 20px; border-radius: 4px; margin: 0 auto 15px; }
     @media print {
       body { padding: 0; background-color: #fff; }
       .container { box-shadow: none; border: none; padding: 0; }
@@ -1553,12 +1559,22 @@ function App() {
                     Stop Generation
                   </button>
                 ) : !isRestoring ? (
-                  <button 
-                    onClick={() => setShowDebugWindow(false)}
-                    className="close-debug-button"
-                  >
-                    ×
-                  </button>
+                  <>
+                    <button 
+                      onClick={clearLogs}
+                      className="clear-logs-button"
+                      title="Clear logs"
+                    >
+                      ⌫
+                    </button>
+                    <button 
+                      onClick={() => setShowDebugWindow(false)}
+                      className="close-debug-button"
+                      title="Close logs"
+                    >
+                      ×
+                    </button>
+                  </>
                 ) : null}
               </div>
             </div>

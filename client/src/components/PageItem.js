@@ -246,19 +246,19 @@ const PageItem = ({
                 text-align: center;
               }
               .btn-save {
-                background: #2196F3;
+                background: var(--primary-color);
                 color: white;
               }
               .btn-save:hover {
-                background: #1976D2;
+                background: var(--primary-color-hover);
                 transform: scale(1.05);
               }
               .btn-close {
-                background: #6c757d;
+                background: var(--gray-color);
                 color: white;
               }
               .btn-close:hover {
-                background: #5a6268;
+                background: var(--gray-color-hover);
                 transform: scale(1.05);
               }
             </style>

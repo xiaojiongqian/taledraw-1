@@ -1,53 +1,50 @@
 /* =================================
-   Button Standardization
+   CSS Variables & Global Styles
    ================================= */
 
-/* Base button style */
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: normal;
-  transition: background-color 0.2s ease;
-  white-space: nowrap; /* Prevent text wrapping */
-}
+    :root {
+    /* Primary Colors - Blue Theme */
+    --primary-color: #2196F3;
+    --primary-color-hover: #1976D2;
+    --primary-color-light: #e6f0ff;
+    --primary-color-lighter: #f0f4ff;
+    
+    /* Secondary Colors */
+    --secondary-color: #e0e0e0;
+    --gray-color: #6c757d;
+    --gray-color-hover: #5a6268;
+    --gray-color-light: #f8f9fa;
+    --gray-color-soft: #95a5a6;
+    --gray-color-soft-hover: #7f8c8d;
+    
+    /* Legacy support - 为了向后兼容 */
+    --neutral-button-bg: var(--gray-color-soft);
+    --neutral-button-hover: var(--gray-color-soft-hover);
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-secondary: linear-gradient(135deg, #667eea, #764ba2);
+    
+    /* Surfaces */
+    --surface-glass: rgba(255, 255, 255, 0.95);
+    --surface-blur: blur(10px);
+    
+    /* Shadows */
+    --shadow-primary: 0 10px 30px rgba(0, 0, 0, 0.1);
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
+    
+    /* Border Radius */
+    --border-radius-large: 20px;
+    --border-radius-medium: 12px;
+    --border-radius-small: 8px;
+    
+    /* Transitions */
+    --transition-default: all 0.3s ease;
+    
+    /* Legacy support - 为了向后兼容 */
+    --primary-color-dark: var(--primary-color-hover);
+  }
 
-/* Primary Button (Blue) */
-.btn-primary {
-  background-color: #4a90e2; /* Base blue from generate button */
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #357ABD; /* Darker blue on hover */
-}
-
-/* Secondary Button (Gray) */
-.btn-secondary {
-  background-color: #e0e0e0; /* Base gray from clear button */
-  color: #333;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--neutral-button-hover);
-}
-
-/* Disabled state for all buttons */
-.btn:disabled {
-  background: #ccc;
-  color: #666;
-  cursor: not-allowed;
-}
-
-
-
-/* =================================
-   Original App Styles
-   ================================= */
-
-/* 全局样式重置 */
 * {
   margin: 0;
   padding: 0;
@@ -56,7 +53,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--gradient-primary);
   min-height: 100vh;
   color: #333;
 }
@@ -67,10 +64,105 @@ body {
   flex-direction: column;
 }
 
-/* 头部样式 */
+/* =================================
+   Reusable Components
+   ================================= */
+
+.glass-surface {
+  background: var(--surface-glass);
+  backdrop-filter: var(--surface-blur);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-primary);
+}
+
+.card {
+  background: var(--surface-glass);
+  backdrop-filter: var(--surface-blur);
+  border-radius: var(--border-radius-large);
+  padding: 2rem;
+  box-shadow: var(--shadow-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* =================================
+   Button Styles
+   ================================= */
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--border-radius-medium);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: normal;
+  transition: var(--transition-default);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-color-hover);
+  }
+
+.btn-secondary {
+  background-color: var(--neutral-button-bg);
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--neutral-button-hover);
+}
+
+.btn:disabled {
+  background: var(--gray-color);
+  color: var(--gray-color-light);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Icon Buttons */
+.icon-btn {
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  color: var(--gray-color);
+}
+
+.icon-btn:hover {
+  color: var(--primary-color);
+}
+
+.icon-btn-large {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.icon-btn-medium {
+  font-size: 16px;
+}
+
+.icon-btn-small {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* =================================
+   Header Styles
+   ================================= */
+
 .App-header {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: var(--surface-glass);
+  backdrop-filter: var(--surface-blur);
   padding: 1rem 2rem;
   box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
@@ -87,7 +179,7 @@ body {
 .App-header h1 {
   font-size: 2rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--gradient-secondary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -98,7 +190,7 @@ body {
   align-items: center;
   gap: 1rem;
   font-size: 0.9rem;
-  color: #666;
+  color: var(--gray-color);
 }
 
 .logout-button {
@@ -106,18 +198,21 @@ body {
   background: var(--neutral-button-bg);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 500;
-  transition: background-color 0.3s ease;
+  transition: var(--transition-default);
 }
 
 .logout-button:hover {
   background: var(--neutral-button-hover);
 }
 
-/* 认证界面样式 */
+/* =================================
+   Authentication Styles
+   ================================= */
+
 .auth-container {
   flex: 1;
   display: flex;
@@ -127,10 +222,10 @@ body {
 }
 
 .auth-form {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: var(--surface-glass);
+  backdrop-filter: var(--surface-blur);
   padding: 3rem;
-  border-radius: 20px;
+  border-radius: var(--border-radius-large);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
@@ -140,8 +235,8 @@ body {
 .auth-tabs {
   display: flex;
   margin-bottom: 2rem;
-  background: #f8f9fa;
-  border-radius: 12px;
+  background: var(--gray-color-light);
+  border-radius: var(--border-radius-medium);
   padding: 4px;
 }
 
@@ -150,14 +245,14 @@ body {
   padding: 0.75rem;
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: var(--transition-default);
 }
 
 .auth-tabs button.active {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--gradient-secondary);
   color: white;
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
@@ -172,9 +267,9 @@ body {
 .input-group input {
   padding: 1rem;
   border: 2px solid #e9ecef;
-  border-radius: 12px;
+  border-radius: var(--border-radius-medium);
   font-size: 1rem;
-  transition: all 0.3s ease;
+  transition: var(--transition-default);
   background: rgba(255, 255, 255, 0.8);
 }
 
@@ -184,24 +279,27 @@ body {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.auth-button {
-  width: 100%;
-  padding: 1rem;
-  background: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
+  .auth-button {
+    width: 100%;
+    padding: 1rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-small);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-default);
+  }
 
-.auth-button:hover {
-  background: #1976D2;
-}
+  .auth-button:hover {
+    background: var(--primary-color-hover);
+  }
 
-/* 主内容区域 */
+/* =================================
+   Main Content Styles
+   ================================= */
+
 .main-content {
   flex: 1;
   max-width: 1200px;
@@ -210,16 +308,15 @@ body {
   width: 100%;
 }
 
-/* 故事输入区域 */
-.story-input-section {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
+  .story-input-section {
+    background: var(--surface-glass);
+    backdrop-filter: var(--surface-blur);
+    border-radius: var(--border-radius-large);
+    padding: 2rem;
+    box-shadow: var(--shadow-primary);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    margin-bottom: 2rem;
+  }
 
 .story-input-section h2 {
   margin-bottom: 1.5rem;
@@ -234,10 +331,10 @@ body {
   border-radius: 16px;
   font-size: 1rem;
   line-height: 1.6;
-  resize: none; /* 禁用右下角拖拽调整大小功能，保持简洁 */
+  resize: none;
   min-height: 200px;
   background: rgba(255, 255, 255, 0.8);
-  transition: all 0.3s ease;
+  transition: var(--transition-default);
 }
 
 .story-input textarea:focus {
@@ -246,7 +343,12 @@ body {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-/* 滚动条样式 - 悬停时显示 */
+.story-input textarea:disabled {
+  background: var(--gray-color-light);
+  cursor: not-allowed;
+}
+
+/* Scrollbar Styles */
 .story-input textarea::-webkit-scrollbar {
   width: 8px;
   opacity: 0;
@@ -272,7 +374,6 @@ body {
   background: rgba(0, 0, 0, 0.4);
 }
 
-/* Firefox滚动条样式 */
 .story-input textarea {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -283,7 +384,7 @@ body {
   scrollbar-color: rgba(0, 0, 0, 0.2) rgba(0, 0, 0, 0.05);
 }
 
-/* 字数计数器样式 */
+/* Character Count */
 .character-count {
   display: flex;
   justify-content: flex-end;
@@ -292,7 +393,7 @@ body {
   margin-top: 0.5rem;
   padding: 0 0.5rem;
   font-size: 0.9rem;
-  color: #666;
+  color: var(--gray-color);
 }
 
 .character-count .count-notice {
@@ -307,11 +408,11 @@ body {
 
 .character-count .count-tip {
   font-size: 0.8rem;
-  color: #999;
+  color: var(--gray-color);
   font-style: italic;
 }
 
-/* 故事设置区域 */
+/* Story Settings */
 .story-settings {
   margin: 1.5rem 0;
   display: flex;
@@ -319,36 +420,12 @@ body {
   gap: 1rem;
 }
 
-/* 基础设置组合（故事页数和图片比例） */
 .basic-settings {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
   gap: 3rem;
   padding: 1rem 0;
-}
-
-@media (min-width: 768px) {
-  .basic-settings {
-    gap: 4rem;
-  }
-}
-
-@media (max-width: 767px) {
-  .story-settings {
-    gap: 0.8rem;
-  }
-  
-  .basic-settings {
-    flex-direction: column;
-    gap: 1.5rem;
-    padding: 0.8rem 0;
-  }
-}
-
-.story-input textarea:disabled {
-  background: #f8f9fa;
-  cursor: not-allowed;
 }
 
 .input-actions {
@@ -358,6 +435,12 @@ body {
   align-items: center;
 }
 
+.input-actions button {
+  padding: 12px 20px;
+  font-size: 16px;
+}
+
+/* Save Options */
 .save-container {
   position: relative;
   display: inline-block;
@@ -367,17 +450,17 @@ body {
   display: flex;
   flex-direction: column;
   position: absolute;
-  bottom: 100%; /* Position above the save button */
+  bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
   background-color: white;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-card);
   z-index: 100;
-  margin-bottom: 8px; /* Space between menu and button */
-  overflow: hidden; /* Ensures border-radius is respected by children */
-  width: 100px; /* Set a specific width */
+  margin-bottom: 8px;
+  overflow: hidden;
+  width: 100px;
 }
 
 .save-options .btn-save-option {
@@ -396,50 +479,24 @@ body {
   border-bottom: 1px solid #f0f0f0;
 }
 
-.save-options .btn-save-option:hover {
-  background-color: #007bff;
-  color: white;
-}
+  .save-options .btn-save-option:hover {
+    background-color: var(--primary-color);
+    color: white;
+  }
 
-.save-options .btn-save-option:last-child {
-  border-bottom: none;
-}
+/* =================================
+   Loading & Debug Styles
+   ================================= */
 
-.input-actions button {
-  /* Specific overrides if any, but most styles are now in .btn classes */
-  /* The flex-grow that caused stretching is removed. */
-  padding: 12px 20px; /* Slightly larger padding for main action buttons */
-  font-size: 16px;
-}
-
-/* These classes are now deprecated and will be removed from JSX. */
-/* The .btn, .btn-primary, .btn-secondary classes will be used instead. */
-.generate-button, .clear-button, .save-button {
-  /* Styles are now handled by .btn, .btn-primary, .btn-secondary */
-  /* Remove old rules to avoid conflicts */
-}
-
-.generate-button:hover:not(:disabled),
-.clear-button:hover:not(:disabled),
-.save-button:hover:not(:disabled) {
-  /* Hover effects are now handled by .btn-primary and .btn-secondary */
-  transform: none; /* Explicitly remove transform */
-}
-
-.input-actions button:disabled {
-  /* Handled by .btn:disabled */
-  transform: none;
-}
-
-/* 加载状态 */
-.loading-section {
-  padding: 1.5rem;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  margin-bottom: 2rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-}
+  .loading-section {
+    background: var(--surface-glass);
+    backdrop-filter: var(--surface-blur);
+    border-radius: var(--border-radius-large);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-primary);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    margin-bottom: 2rem;
+  }
 
 .loading-header {
   display: flex;
@@ -470,11 +527,11 @@ body {
 .abort-button {
   padding: 0.5rem 1rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: var(--transition-default);
   background: var(--neutral-button-bg);
   color: white;
 }
@@ -483,25 +540,67 @@ body {
   background: var(--neutral-button-hover);
 }
 
-.close-debug-button {
-  background: var(--neutral-button-bg);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
+  /* Icon Buttons for Debug */
+  .close-debug-button {
+    background: transparent;
+    border: none;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    color: var(--gray-color-soft);
+    font-size: 20px;
+    font-weight: 500;
+  }
 
-.close-debug-button:hover {
-  background: var(--neutral-button-hover);
-}
+  .close-debug-button:hover {
+    color: var(--gray-color-soft-hover);
+  }
+  
+  .clear-logs-button {
+    background: transparent;
+    border: none;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    color: var(--gray-color-soft);
+    font-size: 16px;
+    margin-right: 8px;
+  }
+
+  .clear-logs-button:hover {
+    color: var(--gray-color-soft-hover);
+  }
+  
+  .debug-info-button {
+    background: transparent;
+    border: none;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    color: var(--gray-color-soft);
+    font-size: 14px;
+    font-weight: bold;
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 0;
+  }
+
+    .debug-info-button:hover {
+    color: var(--gray-color-soft-hover);
+    transform: scale(1.1);
+  }
 
 .loading-spinner {
   width: 40px;
@@ -512,37 +611,20 @@ body {
   animation: spin 1s linear infinite;
 }
 
-/* 生成日志样式 */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* =================================
+   Log Styles
+   ================================= */
+
 .generation-logs {
   background: rgba(248, 249, 250, 0.8);
-  border-radius: 12px;
+  border-radius: var(--border-radius-medium);
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.error-summary {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.error-title {
-  font-weight: 600;
-  color: #dc2626;
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.error-details {
-  color: #991b1b;
-  font-size: 0.85rem;
-  line-height: 1.4;
-  font-family: monospace;
-  background: rgba(255, 255, 255, 0.6);
-  padding: 0.5rem;
-  border-radius: 4px;
 }
 
 .logs-content {
@@ -564,7 +646,7 @@ body {
 }
 
 .log-timestamp {
-  color: #6c757d;
+  color: var(--gray-color);
   font-weight: 500;
   font-family: 'Consolas', 'Monaco', monospace;
   flex-shrink: 0;
@@ -606,22 +688,43 @@ body {
   border-left: 3px solid #198754;
 }
 
-/* 移除了placeholder日志样式 */
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.error-summary {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--border-radius-small);
+  padding: 1rem;
+  margin-bottom: 1rem;
 }
 
-/* 绘本展示区域 */
-.tale-display-section {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  padding: 2rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+.error-title {
+  font-weight: 600;
+  color: #dc2626;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
 }
+
+.error-details {
+  color: #991b1b;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+/* =================================
+   Tale Display Styles
+   ================================= */
+
+  .tale-display-section {
+    background: var(--surface-glass);
+    backdrop-filter: var(--surface-blur);
+    border-radius: var(--border-radius-large);
+    padding: 2rem;
+    box-shadow: var(--shadow-primary);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
 
 .tale-display-section h2 {
   margin-bottom: 2rem;
@@ -630,60 +733,95 @@ body {
   text-align: center;
 }
 
-/* 生成统计信息 */
-.generation-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
+.tale-title-section {
   margin-bottom: 2rem;
-  padding: 1.5rem;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border-radius: 16px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-.stats-item {
+.title-display {
+  text-align: center;
+}
+
+.editable-title {
+  margin: 0;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius-small);
+  transition: var(--transition-default);
+  border: 2px solid transparent;
+}
+
+.editable-title:hover {
+  background: rgba(33, 150, 243, 0.05);
+  border-color: rgba(33, 150, 243, 0.2);
+}
+
+.title-editor {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
-  padding: 1rem;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  gap: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-.stats-label {
-  font-size: 0.9rem;
-  color: #666;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-}
+  .title-input {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius-small);
+    font-size: 1.5rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+    transition: var(--transition-default);
+  }
 
-.stats-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #333;
-}
+  .title-input:focus {
+    border-color: var(--primary-color-hover);
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+    background: white;
+  }
 
-.stats-value.stats-success {
-  color: #28a745;
-}
-
-/* 移除了fallback统计样式 */
-
-.stats-value.stats-rate {
-  color: #667eea;
-}
-
-.tale-display {
+.title-editor-actions {
   display: flex;
-  flex-direction: column;
-  gap: 2rem;
+  gap: 1rem;
 }
 
-/* 移除旧的页面样式，现在使用PageItem组件 */
+  .title-save-button {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-default);
+  }
 
+  .title-save-button:hover {
+    background: var(--primary-color-hover);
+  }
+
+.title-cancel-button {
+  background: var(--gray-color-soft);
+  color: white;
+  border: 1px solid var(--gray-color-soft);
+  border-radius: 6px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-default);
+}
+
+.title-cancel-button:hover {
+  background: var(--gray-color-soft-hover);
+  border-color: var(--gray-color-soft-hover);
+}
+
+/* Status & Statistics */
 .status-badge {
   padding: 0.4rem 0.8rem;
   border-radius: 20px;
@@ -700,8 +838,6 @@ body {
   border: 1px solid #c3e6cb;
 }
 
-/* 移除了fallback状态样式 */
-
 .status-badge.error {
   background: linear-gradient(135deg, #f8d7da, #f5c6cb);
   color: #721c24;
@@ -716,24 +852,11 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
-.error-details {
-  margin-top: 1rem;
-  padding: 0.8rem;
-  background: rgba(220, 53, 69, 0.1);
-  border-radius: 8px;
-  border-left: 3px solid #c85a5a;
-  color: #721c24;
-  font-size: 0.9rem;
-}
-
+/* Page Content */
 .page-content {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -771,19 +894,13 @@ body {
   border-radius: 16px;
 }
 
-/* 移除了占位符图像样式 */
-
 .image-loading span {
   animation: rotate 2s linear infinite;
 }
 
 @keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .image-prompt {
@@ -795,7 +912,7 @@ body {
   cursor: pointer;
   padding: 0.5rem;
   background: rgba(102, 126, 234, 0.1);
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   color: #667eea;
   font-weight: 500;
 }
@@ -804,13 +921,13 @@ body {
   margin-top: 0.5rem;
   padding: 1rem;
   background: rgba(255, 255, 255, 0.5);
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   font-size: 0.9rem;
   color: #666;
   line-height: 1.6;
 }
 
-/* 操作按钮 */
+/* Tale Actions */
 .tale-actions {
   text-align: center;
   margin-top: 2rem;
@@ -818,157 +935,79 @@ body {
   border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-.new-story-button {
-  padding: 1rem 2rem;
-  background: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
+  .new-story-button {
+    padding: 1rem 2rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-small);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-default);
+  }
 
-.new-story-button:hover {
-  background: #1976D2;
-}
+  .new-story-button:hover {
+    background: var(--primary-color-hover);
+  }
 
+/* =================================
+   Messages & Footer
+   ================================= */
 
-
-/* 消息样式 */
 .error-message {
-  color: #D32F2F; /* a nice red for errors */
-  background-color: #FFCDD2; /* light red background */
+  color: #D32F2F;
+  background-color: #FFCDD2;
   padding: 1rem;
-  border-radius: 12px;
+  border-radius: var(--border-radius-medium);
   margin-top: 1rem;
   font-weight: 500;
   box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
 }
 
 .success-message, .progress-message {
-  background: #f8f9fa;
+  background: var(--gray-color-light);
   color: #495057;
   border: 1px solid #dee2e6;
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   margin-top: 1rem;
   font-weight: 500;
 }
 
-/* 页脚 */
 .App-footer {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: var(--surface-glass);
+  backdrop-filter: var(--surface-blur);
   padding: 1rem;
   text-align: center;
-  color: #666;
+  color: var(--gray-color);
   font-size: 0.9rem;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* 标题编辑器样式 */
-.tale-title-section {
-  margin-bottom: 2rem;
+/* =================================
+   Responsive Design
+   ================================= */
+
+@media (min-width: 768px) {
+  .basic-settings {
+    gap: 4rem;
+  }
 }
 
-.title-display {
-  text-align: center;
-}
-
-.editable-title {
-  margin: 0;
-  cursor: pointer;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-  border: 2px solid transparent;
-}
-
-.editable-title:hover {
-  background: rgba(33, 150, 243, 0.05);
-  border-color: rgba(33, 150, 243, 0.2);
-}
-
-
-
-.title-editor {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.title-input {
-  width: 100%;
-  padding: 1rem;
-  border: 2px solid #2196F3;
-  border-radius: 8px;
-  font-size: 1.5rem;
-  font-weight: 600;
-  text-align: center;
-  outline: none;
-  background: rgba(255, 255, 255, 0.9);
-  transition: all 0.3s ease;
-}
-
-.title-input:focus {
-  border-color: #1976D2;
-  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
-  background: white;
-}
-
-.title-editor-actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.title-save-button {
-  background: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 0.6rem 1.2rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.title-save-button:hover {
-  background: #1976D2;
-  transform: translateY(-1px);
-}
-
-.title-cancel-button {
-  background: #f5f5f5;
-  color: #666;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 0.6rem 1.2rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.title-cancel-button:hover {
-  background: #e8e8e8;
-  color: #444;
-  transform: translateY(-1px);
-}
-
-/* 响应式设计 */
 @media (max-width: 768px) {
   .main-content {
     padding: 1rem;
   }
   
-  .title-display {
-    text-align: center;
+  .story-settings {
+    gap: 0.8rem;
+  }
+  
+  .basic-settings {
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 0.8rem 0;
   }
   
   .editable-title {
@@ -1015,22 +1054,6 @@ body {
     font-size: 0.75rem;
   }
   
-  .page-header {
-    flex-direction: column;
-    align-items: center;
-    gap: 0.8rem;
-  }
-  
-  .page-number {
-    font-size: 0.8rem;
-    padding: 0.4rem 0.8rem;
-  }
-  
-  .status-badge {
-    font-size: 0.75rem;
-    padding: 0.3rem 0.6rem;
-  }
-  
   .page-content {
     grid-template-columns: 1fr;
     gap: 1.5rem;
@@ -1058,37 +1081,4 @@ body {
     padding: 2rem;
     margin: 1rem;
   }
-
-  .debug-info-button .info-icon {
-    font-size: 14px;
-  }
-}
-
-/* Debug Info Button - 低调的 i 按钮 */
-.debug-info-button {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-left: auto;
-  flex-shrink: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.debug-info-button:hover {
-  transform: scale(1.1);
-}
-
-.debug-info-button .info-icon {
-  font-size: 16px;
-  color: #999;
-  font-style: normal;
-  line-height: 1;
-}
-
-.debug-info-button:hover .info-icon {
-  color: #4a90e2;
 }

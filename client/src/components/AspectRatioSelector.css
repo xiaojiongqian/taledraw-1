@@ -52,26 +52,26 @@
 }
 
 .preview-box {
-  border: 2px solid #666;
+  border: 2px solid var(--gray-color);
   border-radius: 4px;
   background: transparent;
   transition: all 0.2s ease;
 }
 
 .ratio-option.selected .preview-box {
-  border-color: #2196F3;
-  background: #2196F3;
+  border-color: var(--primary-color);
+  background: var(--primary-color);
 }
 
 .ratio-label {
   font-size: 14px;
   font-weight: 500;
-  color: #666;
+  color: var(--gray-color);
   text-align: center;
 }
 
 .ratio-option.selected .ratio-label {
-  color: #2196F3;
+  color: var(--primary-color);
   font-weight: 600;
 }
 

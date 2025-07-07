@@ -1,5 +1,5 @@
 .character-manager {
-  background: #f8f9fa;
+  background: var(--gray-color-light);
   border: 1px solid #e9ecef;
   border-radius: 6px;
   padding: 12px;
@@ -8,7 +8,7 @@
 }
 
 .character-manager:hover {
-  border-color: #007bff;
+  border-color: var(--primary-color);
 }
 
 .character-header {
@@ -20,8 +20,8 @@
 
 /* 角色设置展开/收缩按钮 */
 .character-toggle {
-  background: #f8f9fa;
-  color: #6c757d;
+  background: var(--gray-color-light);
+  color: var(--gray-color);
   border: 1px solid #e9ecef;
   border-radius: 6px;
   padding: 8px 12px;
@@ -43,7 +43,7 @@
 }
 
 .character-toggle:disabled {
-  background: #f8f9fa;
+  background: var(--gray-color-light);
   color: #adb5bd;
   cursor: not-allowed;
   opacity: 0.7;
@@ -122,7 +122,7 @@
 }
 
 .extract-button {
-  background: #007bff;
+  background: var(--primary-color);
   color: white;
   border: none;
   border-radius: 4px;
@@ -135,18 +135,18 @@
 }
 
 .extract-button:hover:not(:disabled) {
-  background: #0056b3;
+  background: var(--primary-color-hover);
 }
 
 .extract-button:disabled {
-  background: #6c757d;
+  background: var(--gray-color);
   cursor: not-allowed;
   opacity: 0.6;
 }
 
 .extract-hint {
   font-size: 12px;
-  color: #6c757d;
+  color: var(--gray-color);
   line-height: 1.3;
 }
 
@@ -217,7 +217,7 @@
 
 .avatar-desc {
   font-size: 12px;
-  color: #6c757d;
+  color: var(--gray-color);
   line-height: 1.4;
   text-align: center;
 }
@@ -244,7 +244,7 @@
 
 .empty-text {
   font-size: 12px;
-  color: #6c757d;
+  color: var(--gray-color);
 }
 
 /* 生成角色形象按钮 */
@@ -270,7 +270,7 @@
 }
 
 .generate-avatar-button:disabled {
-  background: #6c757d;
+  background: var(--gray-color);
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -298,7 +298,7 @@
 .label-hint {
   font-size: 11px;
   font-weight: 400;
-  color: #6c757d;
+  color: var(--gray-color);
   font-style: italic;
 }
 
@@ -312,12 +312,12 @@
 }
 
 .character-input:focus {
-  border-color: #007bff;
+  border-color: var(--primary-color);
 }
 
 .character-input:disabled {
-  background: #f8f9fa;
-  color: #6c757d;
+  background: var(--gray-color-light);
+  color: var(--gray-color);
 }
 
 .character-textarea {
@@ -337,12 +337,12 @@
 }
 
 .character-textarea:focus {
-  border-color: #007bff;
+  border-color: var(--primary-color);
 }
 
 .character-textarea:disabled {
-  background: #f8f9fa;
-  color: #6c757d;
+  background: var(--gray-color-light);
+  color: var(--gray-color);
 }
 
 /* 负向提示样式 */
@@ -358,14 +358,14 @@
 
 .character-textarea.negative-prompt:disabled {
   background: #f8f8f8;
-  color: #6c757d;
+  color: var(--gray-color);
 }
 
 
 
 /* 高级设置 */
 .advanced-settings {
-  background: #f8f9fa;
+  background: var(--gray-color-light);
   border: 1px solid #e9ecef;
   border-radius: 6px;
   padding: 8px;
@@ -387,11 +387,11 @@
 }
 
 .advanced-toggle:hover:not(:disabled) {
-  color: #007bff;
+  color: var(--primary-color);
 }
 
 .advanced-toggle:disabled {
-  color: #6c757d;
+  color: var(--gray-color);
   cursor: not-allowed;
 }
 
@@ -460,7 +460,7 @@
 }
 
 .image-upload-area:hover {
-  border-color: #007bff;
+  border-color: var(--primary-color);
 }
 
 .image-input {
@@ -501,13 +501,13 @@
 
 .upload-hint {
   font-size: 11px;
-  color: #6c757d;
+  color: var(--gray-color);
 }
 
 /* 遵循度滑块 */
 .fidelity-value {
   font-size: 12px;
-  color: #007bff;
+  color: var(--primary-color);
   font-weight: 600;
 }
 
@@ -530,21 +530,21 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #007bff;
+  background: var(--primary-color);
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .fidelity-slider::-webkit-slider-thumb:hover {
-  background: #0056b3;
+  background: var(--primary-color-hover);
 }
 
 .fidelity-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #007bff;
+  background: var(--primary-color);
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
@@ -563,7 +563,7 @@
   justify-content: space-between;
   margin-top: 4px;
   font-size: 11px;
-  color: #6c757d;
+  color: var(--gray-color);
 }
 
 .fidelity-description {
@@ -572,7 +572,7 @@
 
 .fidelity-info {
   font-size: 11px;
-  color: #007bff;
+  color: var(--primary-color);
   font-style: italic;
 }
 

@@ -1,8 +1,8 @@
 /* CSS变量定义 - 全局颜色配置 */
 :root {
   /* 中性按钮颜色 */
-  --neutral-button-bg: #9ca3af;
-  --neutral-button-hover: #6c757d;
+  --neutral-button-bg: var(--gray-color, #6c757d);
+  --neutral-button-hover: var(--gray-color-hover, #5a6268);
 }
 
 body {

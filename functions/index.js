@@ -802,12 +802,13 @@ async function callGeminiStream(accessToken, story, pageCount, response, userId)
     let chunkCount = 0;
 
     // 处理流式响应
+    streamResponse.body.setEncoding('utf8');
     streamResponse.body.on('data', (chunk) => {
       chunkCount++;
-      const chunkStr = chunk.toString();
+      const chunkStr = chunk;
       
-      // 每10个chunk发送一次进度更新
-      if (chunkCount % 10 === 0 || chunkCount === 1) {
+      // 每100个chunk发送一次进度更新
+      if (chunkCount % 100 === 0 || chunkCount === 1) {
         response.write(`data: ${JSON.stringify({ 
           type: 'progress', 
           step: 'generating',
