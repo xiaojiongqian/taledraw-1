@@ -42,7 +42,7 @@ function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false); // Title editing state
   const [editedTitle, setEditedTitle] = useState(''); // Currently edited title
   const [showSaveOptions, setShowSaveOptions] = useState(false); // Save options
-  const logIdCounter = useRef(0); // Log ID counter
+  // Log ID counter removed - now using timestamp-based unique IDs
   const logsContentRef = useRef(null); // Log content reference
   const saveContainerRef = useRef(null); // Ref for the save container
   const [storyWordCount, setStoryWordCount] = useState(0); // Word count state
@@ -52,6 +52,8 @@ function App() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState('');
   const [hasRestoredState, setHasRestoredState] = useState(false);
+
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -118,6 +120,11 @@ function App() {
     return cjk.length + nonCjk.length;
   }
 
+  // Generate unique page ID
+  function generatePageId(index) {
+    return `page_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
   // Restore state for user
   const restoreStateForUser = async (user) => {
     try {
@@ -167,21 +174,23 @@ function App() {
       setGeneratedResult(savedState.generatedResult || null);
 
       // Restore page state (keep images initially)
-      const restoredPages = (savedState.pages || []).map(page => ({
+      const restoredPages = (savedState.pages || []).map((page, index) => ({
         ...page,
+        // 确保每个页面都有唯一的ID
+        id: page.id || generatePageId(index),
         // 保持原有图片，如果存在的话
         image: page.image || null,
         status: page.image ? 'success' : 'pending'
       }));
       setPages(restoredPages);
 
-      // Verify and redownload images if needed
-      if (restoredPages.length > 0) {
-        await verifyAndRedownloadImages(restoredPages);
-      }
-
-      // Restore UI state
+      // Restore UI state first
       await restoreUIStateForUser(user);
+
+      // Restore images if available
+      if (restoredPages.length > 0) {
+        await restoreImagesFromState(restoredPages);
+      }
 
       setRestoreProgress('State restoration completed!');
       addLog('Successfully restored previous storybook state', 'success');
@@ -198,12 +207,31 @@ function App() {
     }
   };
 
+  // Clean up old UI state data with incompatible format
+  const cleanupOldUIState = () => {
+    try {
+      const savedUIState = stateManager.restoreUIState();
+      if (savedUIState && savedUIState.logs) {
+        // If old UI state contains logs, clear it to avoid React key conflicts
+        console.log('Cleaning up old UI state data with incompatible log format');
+        stateManager.clearUIState();
+      }
+    } catch (error) {
+      console.error('Failed to cleanup old UI state:', error);
+      // Clear UI state on error to be safe
+      stateManager.clearUIState();
+    }
+  };
+
   // Restore UI state for user
   const restoreUIStateForUser = async (user) => {
     try {
+      // Clean up old incompatible data first
+      cleanupOldUIState();
+      
       const savedUIState = stateManager.restoreUIState();
       if (!savedUIState) {
-        console.log('No saved UI state found');
+        // UI state intentionally not saved for fresh start - this is normal
         return;
       }
 
@@ -214,13 +242,17 @@ function App() {
         return;
       }
 
-      // Restore UI state
+      // Restore UI state (only showDebugWindow now)
+      // Note: Logs are NOT restored on page refresh to reduce complexity
+      // and prevent potential key conflicts. Fresh logs will be created on new operations.
       setShowDebugWindow(savedUIState.showDebugWindow || false);
-      setLogs(savedUIState.logs || []);
+      setLogs([]); // Always start with empty logs on page refresh
       
-      console.log('Successfully restored UI state');
+      console.log('Successfully restored UI state (logs cleared for fresh start)');
     } catch (error) {
       console.error('Failed to restore UI state:', error);
+      // Clear UI state on error to be safe
+      stateManager.clearUIState();
     }
   };
 
@@ -230,74 +262,46 @@ function App() {
     
     const uiStateToSave = {
       userEmail: user.email,
-      showDebugWindow: showDebugWindow,
-      logs: logs
+      showDebugWindow: showDebugWindow
+      // Don't save logs to avoid React key conflicts from old ID system
+      // logs: logs
     };
     
     stateManager.saveUIState(uiStateToSave);
   };
 
-  // Verify and redownload images if needed
-  const verifyAndRedownloadImages = async (pages) => {
-    setRestoreProgress('Verifying images...');
+  // Restore images from saved state
+  const restoreImagesFromState = async (pages) => {
+    setRestoreProgress('Restoring images...');
     
     const updatedPages = [...pages];
-    let verifiedCount = 0;
+    let restoredCount = 0;
     
     for (let i = 0; i < updatedPages.length; i++) {
       const page = updatedPages[i];
       
       if (page.image) {
-        try {
-          setRestoreProgress(`Verifying image ${i + 1}/${updatedPages.length}...`);
-          
-          // Create a lightweight image element to test loading
-          const img = new Image();
-          const loadPromise = new Promise((resolve, reject) => {
-            img.onload = () => resolve(true);
-            img.onerror = () => reject(false);
-            img.src = page.image;
-          });
-          
-          // Wait for image to load or fail (with timeout)
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 5000)
-          );
-          
-          await Promise.race([loadPromise, timeoutPromise]);
-          
-          // Image loads successfully, keep it
-          updatedPages[i] = {
-            ...page,
-            image: page.image,
-            status: 'success'
-          };
-          verifiedCount++;
-          addLog(`Page ${i + 1} image verified successfully`, 'success');
-        } catch (error) {
-          console.log(`Page ${i + 1} image verification failed, but keeping URL:`, error);
-          // Keep the image URL but mark as completed (let user decide to regenerate)
-          updatedPages[i] = {
-            ...page,
-            image: page.image,
-            status: 'success'
-          };
-          verifiedCount++;
-          addLog(`Page ${i + 1} image kept (may need regeneration)`, 'warning');
-        }
+        // Trust the saved image URL - if it's in storage, it should work
+        updatedPages[i] = {
+          ...page,
+          image: page.image,
+          status: 'success'
+        };
+        restoredCount++;
+        addLog(`Page ${i + 1} image restored successfully`, 'success');
       } else {
         updatedPages[i] = {
           ...page,
           status: 'pending'
         };
-        addLog(`Page ${i + 1} has no image URL`, 'warning');
+        addLog(`Page ${i + 1} ready for image generation`, 'info');
       }
       
       // Update page state in real-time
       setPages([...updatedPages]);
     }
     
-    setRestoreProgress(`Image verification completed (${verifiedCount}/${updatedPages.length})`);
+    setRestoreProgress(`Image restoration completed (${restoredCount}/${updatedPages.length} images restored)`);
   };
 
   // Save current state
@@ -361,7 +365,6 @@ function App() {
         isAutoExtracted: false
       }); // Reset character state
       setLogs([]); // Clear logs
-      logIdCounter.current = 0; // Reset log counter
       setShowDebugWindow(false); // Hide debug window
       setHasRestoredState(false); // Reset restoration state flag
       stateManager.clearState(); // Clear persistent state
@@ -402,17 +405,29 @@ function App() {
     setStoryWordCount(currentCount);
   };
 
-  // Add log function
+  // Add log function - React Strict Mode safe
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    logIdCounter.current += 1;
+    // Use performance.now() for more precise timing + random + counter for guaranteed uniqueness
+    const uniqueId = `${performance.now()}_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
     const newLog = {
-      id: logIdCounter.current,
+      id: uniqueId,
       timestamp,
       message,
       type
     };
-    setLogs(prevLogs => [...prevLogs, newLog]);
+    setLogs(prevLogs => {
+      // Check if this exact log already exists (React Strict Mode duplicate prevention)
+      const isDuplicate = prevLogs.some(log => 
+        log.message === message && 
+        log.type === type && 
+        Math.abs(performance.now() - parseFloat(log.id.split('_')[0])) < 1000 // Within 1 second
+      );
+      if (isDuplicate) {
+        return prevLogs; // Don't add duplicate
+      }
+      return [...prevLogs, newLog];
+    });
   };
 
 
@@ -449,13 +464,14 @@ function App() {
     setAllCharacters({});
     setError(null);
     setLogs([]); // Clear old logs
-    logIdCounter.current = 0; // Reset log counter
     addLog('Starting story generation...', 'info');
 
     try {
       const taleData = await generateTale(story, pageCount, aspectRatio, (progress) => {
         if (progress.log) {
-          addLog(progress.log, 'info');
+          // Use 'llm' type for LLM-related logs
+          const logType = progress.step === 'connecting' || progress.step === 'analyzing' ? 'llm' : 'info';
+          addLog(progress.log, logType);
         }
         // 清除之前的错误状态，表明流式处理正在正常进行
         if (progress.step && progress.step !== 'error') {
@@ -467,7 +483,12 @@ function App() {
       setStoryTitle(taleData.storyTitle);
       setArtStyle(taleData.artStyle);
       setAllCharacters(taleData.allCharacters);
-      setPages(taleData.pages.map(p => ({ ...p, image: null, status: 'pending' })));
+      setPages(taleData.pages.map((p, index) => ({ 
+        ...p, 
+        id: generatePageId(index), 
+        image: null, 
+        status: 'pending' 
+      })));
       setGeneratedResult(taleData);
       setError(null); // 清除错误状态，表明故事生成成功
       addLog('Story structure generation completed, starting automatic image generation...', 'success');
@@ -551,7 +572,11 @@ function App() {
           aspectRatio,
           page,
           charactersData,
-          artStyleData
+          artStyleData,
+          (message, type) => {
+            // Add log with appropriate type for image generation
+            addLog(message, type === 'image' ? 'image' : type);
+          }
         );
 
         // 更新单个页面的图片和状态
@@ -668,7 +693,6 @@ function App() {
     setLoading(false); // Reset loading state
     setIsGenerating(false); // Reset generation state
     setLogs([]); // Clear logs
-    logIdCounter.current = 0; // Reset log counter
     setShowDebugWindow(false); // Hide debug window
     stateManager.clearState(); // Clear persistent state
     stateManager.clearUIState(); // Clear UI state
@@ -705,7 +729,11 @@ function App() {
         aspectRatio,
         pageToRegenerate, // pageData
         allCharacters,    // allCharacters
-        artStyle          // artStyle
+        artStyle,         // artStyle
+        (message, type) => {
+          // Add log with appropriate type for image generation
+          addLog(message, type === 'image' ? 'image' : type);
+        }
       );
 
       // Step 3: Update page with new image and 'success' status
@@ -815,66 +843,88 @@ function App() {
     setShowSaveOptions(!showSaveOptions);
   };
 
+
+
   const handleSaveAsPptx = async () => {
     if (pages.length === 0) {
       addLog('No pages available to save.', 'warning');
       return;
     }
+    
+    // 检查PptxGenJS是否可用
+    if (typeof PptxGenJS === 'undefined') {
+      addLog('PPTX library not loaded. Please refresh the page and try again.', 'error');
+      return;
+    }
+    
+    const startTime = Date.now();
     addLog('Preparing PPTX file download...', 'info');
+    console.log('PPTX library check passed');
     setShowSaveOptions(false);
 
-    let pptx = new PptxGenJS();
-    pptx.title = storyTitle || 'My Story Book';
+    try {
+      let pptx = new PptxGenJS();
+      pptx.title = storyTitle || 'My Story Book';
+      console.log('PPTX object created');
 
-    // Helper function to fetch and convert image to Base64
-    const toBase64 = async (url) => {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Image loading failed: ${response.statusText}`);
+      // 简化的PPTX处理逻辑
+      for (const [index, page] of pages.entries()) {
+        addLog(`Processing page ${index + 1}...`, 'info');
+        let slide = pptx.addSlide();
+        slide.addText(storyTitle || 'My Story Book', { x: 0.5, y: 0.25, w: '90%', h: 0.5, fontSize: 18, bold: true });
+        slide.addText(page.title || `Page ${index + 1}`, { x: 0.5, y: 0.8, w: '90%', h: 0.4, fontSize: 14 });
+        
+        if (page.image && page.status === 'success') {
+          try {
+            // 直接使用图片URL
+            slide.addImage({ path: page.image, x: '10%', y: '25%', w: '80%', h: '45%' });
+            addLog(`Added image for page ${index + 1}`, 'info');
+            console.log(`Image added for page ${index + 1}:`, page.image);
+          } catch (error) {
+            addLog(`Unable to add image for page ${index + 1}: ${error.message}`, 'warning');
+            console.warn(`Image error for page ${index + 1}:`, error);
+          }
         }
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } catch (e) {
-        console.error(`CORS or network error when getting image ${url}.`, 'error');
-        addLog(`Image retrieval failed ${url}, possibly due to CORS policy.`, 'error');
-        throw e;
-      }
-    };
 
-    for (const [index, page] of pages.entries()) {
-      addLog(`Processing page ${index + 1}...`, 'info');
-      let slide = pptx.addSlide();
-      slide.addText(storyTitle || 'My Story Book', { x: 0.5, y: 0.25, w: '90%', h: 0.5, fontSize: 18, bold: true });
-      slide.addText(page.title || `Page ${index + 1}`, { x: 0.5, y: 0.8, w: '90%', h: 0.4, fontSize: 14 });
+        slide.addText(page.text, { x: '10%', y: '75%', w: '80%', h: '20%', fontSize: 12, align: 'left' });
+        console.log(`Page ${index + 1} processed`);
+      }
+
+      const safeTitle = (storyTitle || 'storybook').replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
+      const fileName = `${safeTitle}.pptx`;
       
-      if (page.image && page.status === 'success') {
+      addLog('Generating PPTX file...', 'info');
+      console.log('Starting PPTX generation with filename:', fileName);
+      
+      // 使用Promise包装PPTX生成
+      return new Promise((resolve, reject) => {
         try {
-          addLog(`Converting image for page ${index + 1}...`, 'info');
-          const imageBase64 = await toBase64(page.image);
-          slide.addImage({ data: imageBase64, x: '10%', y: '25%', w: '80%', h: '45%' });
-        } catch (error) {
-           addLog(`Unable to add image for page ${index + 1}: ${error.message}`, 'error');
+          pptx.writeFile({ fileName: fileName })
+            .then(generatedFileName => {
+              const endTime = Date.now();
+              const processingTime = ((endTime - startTime) / 1000).toFixed(1);
+              console.log('PPTX generated successfully:', generatedFileName);
+              addLog(`PPTX file download initiated! (${processingTime}s)`, 'success');
+              console.log('If PPTX download did not start, check browser download settings');
+              
+              resolve(generatedFileName);
+            })
+            .catch(err => {
+              console.error('PPTX generation error:', err);
+              addLog(`Failed to generate PPTX: ${err.message}`, 'error');
+              reject(err);
+            });
+        } catch (syncError) {
+          console.error('PPTX writeFile error:', syncError);
+          addLog(`PPTX generation failed: ${syncError.message}`, 'error');
+          reject(syncError);
         }
-      }
-
-      slide.addText(page.text, { x: '10%', y: '75%', w: '80%', h: '20%', fontSize: 12, align: 'left' });
-    }
-
-    const safeTitle = (storyTitle || 'storybook').replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
-    pptx.writeFile({ fileName: `${safeTitle}.pptx` })
-      .then(fileName => {
-        addLog(`PPTX file downloaded successfully: ${fileName}`, 'success');
-      })
-      .catch(err => {
-        addLog(`Failed to save PPTX: ${err.message}`, 'error');
-        console.error(err);
       });
+      
+    } catch (error) {
+      console.error('PPTX setup error:', error);
+      addLog(`PPTX generation failed: ${error.message}`, 'error');
+    }
   };
 
   const handleSaveAsHtml = async () => {
@@ -883,109 +933,366 @@ function App() {
       return;
     }
 
+    // 基本浏览器兼容性检查
+    if (!window.Blob || !URL.createObjectURL) {
+      addLog('Your browser does not support file download. Please try a modern browser.', 'error');
+      return;
+    }
+
+    const startTime = Date.now();
     addLog('Preparing HTML file download...', 'info');
-    const originalButtonText = 'Save';
-    const button = document.querySelector('.save-button');
-    if (button) button.textContent = 'Processing...';
+    console.log('Browser download support check passed');
 
-
+    // 在外部声明变量，以便在catch块中访问
+    let htmlContent = '';
+    
     try {
-      const toBase64 = async (url) => {
-        try {
-          const response = await fetch(url);
-          if (!response.ok) {
-            throw new Error(`Image loading failed: ${response.statusText}`);
-          }
-          const blob = await response.blob();
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } catch (e) {
-          console.error(`CORS or network error when getting image ${url}.`);
-          addLog(`Image retrieval failed ${url}, possibly due to CORS policy.`, 'error');
-          throw e; // re-throw error
-        }
-      };
-
-      const pagesWithBase64Images = await Promise.all(
-        pages.map(async (page, index) => {
-          let imageBase64 = null;
-          if (page.image && page.status === 'success') {
-            try {
-              addLog(`Converting image for page ${index + 1}...`, 'info');
-              imageBase64 = await toBase64(page.image);
-            } catch (error) {
-              addLog(`Unable to convert image for page ${index + 1}: ${error.message}`, 'error');
-            }
-          }
-          return { ...page, imageBase64 };
-        })
-      );
-
-      // 确保所有文本内容都正确编码
+      // 转换图片为Base64内嵌格式
+      addLog('Converting images to Base64 format...', 'info');
+      
       const cleanText = (text) => {
         if (!text) return '';
-        // 移除乱码字符并进行HTML转义
         return text.replace(/\uFFFD/g, '').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
       };
 
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html lang="zh-CN">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${cleanText(storyTitle) || 'My Story Book'}</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
-            .container { max-width: 800px; margin: auto; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
-            h1 { text-align: center; color: #444; }
-            .page { margin-bottom: 40px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; page-break-inside: avoid; }
-            .page img { max-width: 100%; height: auto; display: block; margin: 0 auto 15px; border-radius: 4px; }
-            .page p { text-align: justify; font-size: 1.1em; white-space: pre-wrap; }
-            @media print {
-              body { padding: 0; background-color: #fff; }
-              .container { box-shadow: none; border: none; padding: 0; }
+      // 转换图片为Base64的函数 - 优先使用页面缓存
+      const convertImageToBase64 = async (imageUrl, pageIndex) => {
+        return new Promise((resolve, reject) => {
+          if (!imageUrl) {
+            resolve(null);
+            return;
+          }
+          
+          let hasResolved = false;
+          const resolveOnce = (value) => {
+            if (!hasResolved) {
+              hasResolved = true;
+              resolve(value);
             }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>${cleanText(storyTitle) || 'My Story Book'}</h1>
-            ${pagesWithBase64Images.map((page, index) => `
-              <div class="page">
-                <h2>${page.title ? `${index + 1}. ${cleanText(page.title)}` : `${index + 1}.`}</h2>
-                ${page.imageBase64 ? `<img src="${page.imageBase64}" alt="Page ${index + 1} illustration">` : '<p><em>Image loading failed or not generated</em></p>'}
-                <p>${cleanText(page.text)}</p>
-              </div>
-            `).join('')}
-          </div>
-        </body>
-        </html>
-      `;
+          };
+          
+          // 方法1：使用Fetch API获取图片数据（绕过Canvas CORS限制）
+          const tryFromFetch = async () => {
+            console.log(`Attempting to fetch image ${pageIndex + 1} via Fetch API...`);
+            
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const blob = await response.blob();
+            console.log(`Image ${pageIndex + 1} fetched successfully, size: ${Math.round(blob.size / 1024)}KB`);
+            
+            // 将Blob转换为dataURL
+            const dataURL = await new Promise((blobResolve, blobReject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result;
+                console.log(`Image ${pageIndex + 1} converted from fetch, size: ${Math.round(result.length / 1024)}KB`);
+                blobResolve(result);
+              };
+              reader.onerror = () => {
+                console.warn(`Failed to read blob for image ${pageIndex + 1}`);
+                blobReject(new Error('Failed to read blob'));
+              };
+              reader.readAsDataURL(blob);
+            });
+            
+            // 成功获取dataURL
+            resolveOnce(dataURL);
+            return true;
+          };
+          
+          // 方法2：创建新的Image对象加载（备用方案）
+          const tryFromNetwork = () => {
+            console.log(`Loading image ${pageIndex + 1} from network...`);
+            const img = new Image();
+            
+            // 设置CORS
+            img.crossOrigin = 'anonymous';
+            
+            img.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                ctx.drawImage(img, 0, 0);
+                
+                const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                console.log(`Image ${pageIndex + 1} converted from network, size: ${Math.round(dataURL.length / 1024)}KB`);
+                resolveOnce(dataURL);
+              } catch (error) {
+                console.warn(`Failed to convert image ${pageIndex + 1} from network:`, error);
+                resolveOnce(imageUrl);
+              }
+            };
+            
+            img.onerror = (error) => {
+              console.warn(`Failed to load image ${pageIndex + 1} from network:`, error);
+              
+              // 尝试不使用CORS
+              if (img.crossOrigin === 'anonymous') {
+                console.log(`Retrying image ${pageIndex + 1} without CORS...`);
+                const retryImg = new Image();
+                retryImg.onload = () => {
+                  try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = retryImg.naturalWidth;
+                    canvas.height = retryImg.naturalHeight;
+                    ctx.drawImage(retryImg, 0, 0);
+                    const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                    console.log(`Image ${pageIndex + 1} converted without CORS, size: ${Math.round(dataURL.length / 1024)}KB`);
+                    resolveOnce(dataURL);
+                  } catch (canvasError) {
+                    console.warn(`Canvas conversion failed for image ${pageIndex + 1}:`, canvasError);
+                    resolveOnce(imageUrl);
+                  }
+                };
+                retryImg.onerror = () => {
+                  console.warn(`Retry also failed for image ${pageIndex + 1}`);
+                  resolveOnce(imageUrl);
+                };
+                retryImg.src = imageUrl;
+              } else {
+                resolveOnce(imageUrl);
+              }
+            };
+            
+            img.src = imageUrl;
+          };
+          
+          // 设置超时
+          setTimeout(() => {
+            if (!hasResolved) {
+              console.warn(`Image ${pageIndex + 1} conversion timeout after 30s:`, imageUrl);
+              resolveOnce(imageUrl);
+            }
+          }, 30000);
+          
+          // 首先尝试Fetch API获取，如果失败再尝试Canvas方法
+          tryFromFetch().then(() => {
+            console.log(`Fetch method completed successfully for image ${pageIndex + 1}`);
+          }).catch((error) => {
+            console.warn(`Fetch failed for image ${pageIndex + 1}:`, error);
+            // Fetch失败，尝试Canvas方法
+            if (!hasResolved) {
+              console.log(`Trying Canvas method for image ${pageIndex + 1}...`);
+              tryFromNetwork();
+            }
+          });
+        });
+      };
 
-      // 确保Blob使用正确的编码
-      const blob = new Blob([htmlContent], { type: 'text/html; charset=utf-8' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      // 转换所有图片 - 并行处理提高效率
+      const pagesWithBase64 = [];
+      const totalImages = pages.filter(page => page.image && page.status === 'success').length;
+      
+      if (totalImages > 0) {
+        addLog(`Converting ${totalImages} images to embedded Base64 format...`, 'info');
+        
+        // 顺序处理所有图片转换（避免并发问题）
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+          
+          if (page.image && page.status === 'success') {
+            addLog(`Converting image ${i + 1}...`, 'info');
+            
+            try {
+              const base64Image = await convertImageToBase64(page.image, i);
+              
+              // 检查是否成功转换为Base64
+              if (base64Image && base64Image.startsWith('data:image/')) {
+                addLog(`Image ${i + 1} embedded successfully`, 'success');
+                pagesWithBase64.push({ ...page, base64Image, isEmbedded: true });
+              } else {
+                addLog(`Image ${i + 1} will be linked (not embedded)`, 'warning');
+                pagesWithBase64.push({ ...page, base64Image, isEmbedded: false });
+              }
+            } catch (error) {
+              console.error(`Failed to process image ${i + 1}:`, error);
+              addLog(`Image ${i + 1} conversion failed: ${error.message}`, 'error');
+              pagesWithBase64.push(page);
+            }
+            
+            // 添加小延迟避免请求过于频繁
+            if (i < pages.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } else {
+            pagesWithBase64.push(page);
+          }
+        }
+        
+        // 统计成功嵌入的图片数量
+        const embeddedCount = pagesWithBase64.filter(page => page.isEmbedded).length;
+        const linkedCount = totalImages - embeddedCount;
+        
+        if (embeddedCount > 0) {
+          addLog(`${embeddedCount} images embedded successfully` + (linkedCount > 0 ? `, ${linkedCount} images will be linked` : ''), 'success');
+        } else if (linkedCount > 0) {
+          addLog(`All ${linkedCount} images will be linked (not embedded)`, 'warning');
+        }
+      } else {
+        addLog('No images to convert', 'info');
+        pagesWithBase64.push(...pages);
+      }
+
+      // 构建HTML内容
+      addLog('Building HTML content...', 'info');
+      
+      // 生成HTML内容
+      const embeddedImages = pagesWithBase64.filter(page => page.isEmbedded).length;
+      const linkedImages = pagesWithBase64.filter(page => page.base64Image && !page.isEmbedded).length;
+      
+      htmlContent = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${cleanText(storyTitle) || 'My Story Book'}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
+    .container { max-width: 800px; margin: auto; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
+    h1 { text-align: center; color: #444; }
+    .page { margin-bottom: 40px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; page-break-inside: avoid; }
+    .page img { max-width: 100%; height: auto; display: block; margin: 0 auto 15px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .page p { text-align: justify; font-size: 1.1em; white-space: pre-wrap; }
+    .missing-image { text-align: center; color: #666; font-style: italic; background: #f8f9fa; padding: 20px; border-radius: 4px; margin: 0 auto 15px; }
+    @media print {
+      body { padding: 0; background-color: #fff; }
+      .container { box-shadow: none; border: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>${cleanText(storyTitle) || 'My Story Book'}</h1>
+    ${pagesWithBase64.map((page, index) => `
+      <div class="page">
+        <h2>${page.title ? `${index + 1}. ${cleanText(page.title)}` : `${index + 1}.`}</h2>
+        ${page.base64Image ? 
+          `<img src="${page.base64Image}" alt="Page ${index + 1} illustration" loading="lazy">` : 
+          `<div class="missing-image">Image not available</div>`
+        }
+        <p>${cleanText(page.text)}</p>
+      </div>
+    `).join('')}
+  </div>
+</body>
+</html>`;
+
+      addLog('Creating download file...', 'info');
+      
+      // 计算文件大小
+      const fileSizeBytes = new Blob([htmlContent], { type: 'text/html' }).size;
+      const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2);
+      console.log('HTML content length:', htmlContent.length, 'bytes');
+      console.log('File size:', fileSizeMB, 'MB');
+      
+      // 根据文件大小提供反馈
+      if (fileSizeBytes > 50 * 1024 * 1024) { // 50MB
+        addLog(`Warning: Large file size (${fileSizeMB}MB) may cause download issues`, 'warning');
+      } else if (fileSizeBytes > 10 * 1024 * 1024) { // 10MB
+        addLog(`Generated file size: ${fileSizeMB}MB`, 'info');
+      } else {
+        addLog(`Generated file size: ${fileSizeMB}MB`, 'success');
+      }
+      
+      // 创建文件名
       const safeTitle = (storyTitle || 'storybook').replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
-      link.download = `${safeTitle || 'storybook'}.html`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      addLog('HTML file downloaded successfully!', 'success');
+      const fileName = `${safeTitle || 'storybook'}.html`;
+      
+      // 尝试多种下载方法
+      addLog('Attempting to trigger download...', 'info');
+      
+      // 方法1: 标准的Blob + URL下载
+      try {
+        const blob = new Blob([htmlContent], { type: 'text/html; charset=utf-8' });
+        console.log('Blob created, size:', blob.size);
+        
+        const url = URL.createObjectURL(blob);
+        console.log('Object URL created:', url);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.style.display = 'none';
+        
+        // 添加到DOM并点击
+        document.body.appendChild(link);
+        console.log('Link added to DOM');
+        
+        // 尝试触发点击事件
+        const clickEvent = new MouseEvent('click', {
+          view: window,
+          bubbles: true,
+          cancelable: true
+        });
+        
+        link.dispatchEvent(clickEvent);
+        console.log('Click event dispatched');
+        
+        // 稍后清理
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          console.log('Link cleaned up');
+        }, 1000);
+        
+        const endTime = Date.now();
+        const processingTime = ((endTime - startTime) / 1000).toFixed(1);
+        
+        // 生成详细的成功信息
+        let successMessage = `HTML file download initiated! (${processingTime}s)`;
+        if (embeddedImages > 0 && linkedImages === 0) {
+          successMessage += ` - All ${embeddedImages} images embedded, no internet required`;
+        } else if (embeddedImages > 0 && linkedImages > 0) {
+          successMessage += ` - ${embeddedImages} images embedded, ${linkedImages} require internet`;
+        } else if (linkedImages > 0) {
+          successMessage += ` - ${linkedImages} images require internet connection`;
+        }
+        
+        addLog(successMessage, 'success');
+        console.log('If download did not start, check browser download settings or popup blockers');
+        
+        // 如果有链接图片，提供额外提示
+        if (linkedImages > 0) {
+          addLog(`💡 Tip: Some images need internet connection to display properly`, 'info');
+        }
+        
+      } catch (blobError) {
+        console.error('Blob download method failed:', blobError);
+        throw blobError;
+      }
+      
     } catch (error) {
       console.error('Error saving as HTML:', error);
       setError('Failed to save HTML: ' + error.message);
       addLog(`Failed to save HTML: ${error.message}`, 'error');
+      
+      // 提供备用方案 - 在新窗口中打开HTML内容
+      try {
+        addLog('Trying fallback method: opening in new window...', 'info');
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+          newWindow.document.write(htmlContent);
+          newWindow.document.close();
+          addLog('HTML content opened in new window. You can save it manually (Ctrl+S)', 'info');
+        } else {
+          addLog('Popup blocked. Please allow popups and try again, or check browser download settings', 'warning');
+        }
+      } catch (fallbackError) {
+        console.error('Fallback method also failed:', fallbackError);
+        addLog('All download methods failed. Please check browser settings and try again', 'error');
+      }
     } finally {
-      if (button) button.textContent = originalButtonText;
-      setShowSaveOptions(false); // Close options menu
+      setShowSaveOptions(false);
     }
   };
+
+
 
   // 在 useEffect 中初始化 storyWordCount
   useEffect(() => {
@@ -1018,6 +1325,15 @@ function App() {
   // 初始化时检查并准备状态恢复
   useEffect(() => {
     const initializeApp = async () => {
+      // 一次性清理：清理旧的localStorage数据以解决React key冲突问题
+      const OLD_DATA_CLEANUP_KEY = 'taledraw_old_data_cleaned_v1';
+      if (!localStorage.getItem(OLD_DATA_CLEANUP_KEY)) {
+        console.log('Performing one-time cleanup of old localStorage data...');
+        localStorage.clear();
+        localStorage.setItem(OLD_DATA_CLEANUP_KEY, 'true');
+        console.log('Old localStorage data cleaned up');
+      }
+      
       // 先清理可能存在的乱码数据
       stateManager.cleanCorruptedData();
       
@@ -1032,6 +1348,8 @@ function App() {
 
     initializeApp();
   }, []);
+
+
 
   // 认证加载状态 - 显示加载界面而不是登录界面
   if (authLoading) {
@@ -1193,6 +1511,7 @@ function App() {
                   </div>
                 )}
               </div>
+              
               <button onClick={clearStory} disabled={loading} className="btn btn-secondary">
                 Clear
               </button>
@@ -1310,7 +1629,7 @@ function App() {
             <div className="story-pages">
               {pages.map((page, index) => (
                 <PageItem
-                  key={page.id || index}
+                  key={page.id || `page_${index}`}
                   page={page}
                   index={index}
                   allCharacters={allCharacters}

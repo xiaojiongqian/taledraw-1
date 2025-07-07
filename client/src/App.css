@@ -31,15 +31,16 @@
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #c7c7c7; /* Darker gray on hover */
+  background: var(--neutral-button-hover);
 }
 
 /* Disabled state for all buttons */
 .btn:disabled {
-  background-color: #ccc;
-  color: #888;
+  background: #ccc;
+  color: #666;
   cursor: not-allowed;
 }
+
 
 
 /* =================================

@@ -47,18 +47,19 @@ class StateManager {
   }
 
   // Save UI state (like showDebugWindow)
+  // Note: Logs are NOT saved to reduce complexity and prevent key conflicts
   saveUIState(uiState) {
     try {
       const uiStateToSave = {
         version: this.VERSION,
         timestamp: Date.now(),
         userEmail: uiState.userEmail,
-        showDebugWindow: uiState.showDebugWindow,
-        logs: uiState.logs || []
+        showDebugWindow: uiState.showDebugWindow
+        // logs: uiState.logs || [] // Logs are NOT saved to prevent key conflicts
       };
       
       localStorage.setItem(this.UI_STORAGE_KEY, JSON.stringify(uiStateToSave));
-      console.log('UI state saved to localStorage');
+      console.log('UI state saved to localStorage (excluding logs)');
       return true;
     } catch (error) {
       console.error('Failed to save UI state:', error);

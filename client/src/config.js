@@ -42,7 +42,7 @@ export const UTILS = {
 
   // 错误消息格式化
   formatErrorMessage: (message, apiVersion = API_CONFIG.IMAGEN_API_VERSION) => {
-    return `Imagen ${apiVersion} API returned error: ${message}`;
+    return `Image generation API returned error: ${message}`;
   }
 };
 
