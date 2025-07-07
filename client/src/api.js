@@ -156,7 +156,7 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     
     // Send image generation request
     if (onProgress) {
-      onProgress(UTILS.formatLogMessage(pageIndex, `Calling Imagen ${API_CONFIG.IMAGEN_API_VERSION} API to generate image...`), 'image');
+      onProgress(UTILS.formatLogMessage(pageIndex, `Calling image generation API to generate image...`), 'image');
     }
     
     const result = await generateImage(requestData);
@@ -242,7 +242,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
         mode: 'cors',
         credentials: 'omit',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': `Bearer ${idToken}`,
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache',
@@ -384,7 +384,7 @@ export async function generateTale(storyText, pageCount, aspectRatio, onProgress
     if (onProgress) {
       onProgress({
         step: 'connecting',
-        log: 'Connecting to Gemini AI service...'
+        log: 'Connecting to LLM service...'
       });
     }
 
@@ -392,7 +392,7 @@ export async function generateTale(storyText, pageCount, aspectRatio, onProgress
     if (onProgress) {
       onProgress({
         step: 'analyzing',
-        log: 'Using Gemini AI to analyze story structure and character information...'
+        log: 'Using LLM to analyze story structure and character information...'
       });
     }
 

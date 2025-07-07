@@ -44,7 +44,7 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 
 ### 5. 导出与保存 ✅
 - **多格式导出**：
-  - HTML：完整网页格式，包含内嵌图像
+  - HTML：完整网页格式，支持图片Base64嵌入，完全离线查看
   - PPTX：PowerPoint演示文稿格式
 - **云存储**：Firebase Storage 自动保存生成的图像
 - **数据持久化**：支持 Cloud Storage 和 Firestore 两种存储模式
@@ -87,6 +87,9 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 用户输入 → Firebase Auth → Gemini分析 → 结构化数据 → 
 Cloud Storage/Firestore → 前端展示 → Imagen生成 → Firebase Storage → 最终展示
 ```
+
+### 编码规范
+- **字符编码**：为避免中文乱码，所有HTTP通信的 `Content-Type` 头必须明确指定 `charset=UTF-8`，尤其是在流式API中。
 
 ## 内容安全特性 ✅
 
@@ -142,7 +145,8 @@ Cloud Storage/Firestore → 前端展示 → Imagen生成 → Firebase Storage �
 - ❌ 高级编辑
 
 ## 版本信息
-- **当前版本**：v0.2.2
+- **当前版本**：v0.3.4
+- **最新更新**：HTML导出功能完整修复，支持图片Base64嵌入和离线查看
 - **支持的AI模型**：
   - Gemini 2.5-flash (故事分析)
   - Imagen 3.0-generate-002 (图像生成)

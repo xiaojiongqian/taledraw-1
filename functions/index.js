@@ -1226,7 +1226,7 @@ exports.generateTaleStream = onRequest(
   { memory: '1GB', timeoutSeconds: 300, region: 'us-central1' },
   (request, response) => {
     cors(request, response, async () => {
-      response.setHeader('Content-Type', 'text/event-stream');
+      response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
       response.setHeader('Cache-Control', 'no-cache');
       response.setHeader('Connection', 'keep-alive');
 
@@ -1270,7 +1270,7 @@ exports.generateTaleStream = onRequest(
         response.write(`data: ${JSON.stringify({ 
           type: 'progress', 
           step: 'connecting',
-          message: 'Connecting to Gemini AI service...' 
+          message: 'Connecting to LLM service...' 
         })}\n\n`);
 
         // 调用Gemini API进行流式生成
