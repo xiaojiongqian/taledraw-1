@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Background circle with gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="url(#bgGradient)" stroke="none"/>
+  
+  <!-- Abstract book shape - simplified and flattened -->
+  <path d="M25 30 L25 70 L45 65 L55 65 L75 70 L75 30 L55 35 L45 35 Z" fill="#ffffff" opacity="0.95"/>
+  
+  <!-- Book spine/binding -->
+  <rect x="47" y="30" width="6" height="40" fill="#f59e0b" opacity="0.8"/>
+  
+  <!-- Abstract page lines -->
+  <rect x="30" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
+  <rect x="30" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
+  <rect x="30" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
+  
+  <rect x="55" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
+  <rect x="55" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
+  <rect x="55" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
+</svg> 
