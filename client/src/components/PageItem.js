@@ -269,7 +269,7 @@ const PageItem = ({
             </div>
             <div class="user-hint">
               <small style="color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 12px; font-size: 11px;">
-                💡 Double-click to toggle fullscreen • Right-click to save image
+                💡 Double-click to toggle fullscreen
               </small>
             </div>
             <div class="controls">
