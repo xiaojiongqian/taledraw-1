@@ -1381,24 +1381,8 @@ function App() {
       <div className="App">
         <header className="App-header">
           <h1>
-            <svg className="app-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="40" height="40">
-              <defs>
-                <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style={{stopColor:'#6366f1', stopOpacity:1}} />
-                  <stop offset="100%" style={{stopColor:'#8b5cf6', stopOpacity:1}} />
-                </linearGradient>
-              </defs>
-              <circle cx="50" cy="50" r="48" fill="url(#bgGradient)" stroke="none"/>
-              <path d="M25 30 L25 70 L45 65 L55 65 L75 70 L75 30 L55 35 L45 35 Z" fill="#ffffff" opacity="0.95"/>
-              <rect x="47" y="30" width="6" height="40" fill="#f59e0b" opacity="0.8"/>
-              <rect x="30" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
-              <rect x="30" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-              <rect x="30" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-              <rect x="55" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
-              <rect x="55" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-              <rect x="55" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-            </svg>
-            Tale Draw - AI Story Book Generator
+            <img className="app-icon" src="/icon-mono.svg" alt="Tale Draw Icon" width="40" height="40" />
+            Tale Draw - Story Book Generator
           </h1>
           <p>Generate beautiful illustrated storybooks for your stories using AI technology</p>
         </header>
@@ -1457,24 +1441,8 @@ function App() {
       <header className="App-header">
         <div className="header-content">
           <h1>
-            <svg className="app-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="40" height="40">
-              <defs>
-                <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style={{stopColor:'#6366f1', stopOpacity:1}} />
-                  <stop offset="100%" style={{stopColor:'#8b5cf6', stopOpacity:1}} />
-                </linearGradient>
-              </defs>
-              <circle cx="50" cy="50" r="48" fill="url(#bgGradient)" stroke="none"/>
-              <path d="M25 30 L25 70 L45 65 L55 65 L75 70 L75 30 L55 35 L45 35 Z" fill="#ffffff" opacity="0.95"/>
-              <rect x="47" y="30" width="6" height="40" fill="#f59e0b" opacity="0.8"/>
-              <rect x="30" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
-              <rect x="30" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-              <rect x="30" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-              <rect x="55" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
-              <rect x="55" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-              <rect x="55" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-            </svg>
-            Tale Draw - AI Story Book Generator
+            <img className="app-icon" src="/icon-mono.svg" alt="Tale Draw Icon" width="40" height="40" />
+            Tale Draw - Story Book Generator
           </h1>
           <div className="user-info">
             <span>Welcome, {user.email}</span>

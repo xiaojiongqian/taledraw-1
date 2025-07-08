@@ -10,18 +10,16 @@
   <!-- Background circle -->
   <circle cx="50" cy="50" r="48" fill="url(#bgGradient)" stroke="none"/>
   
-  <!-- Abstract book shape - simplified and flattened -->
-  <path d="M25 30 L25 70 L45 65 L55 65 L75 70 L75 30 L55 35 L45 35 Z" fill="#ffffff" opacity="0.95"/>
+  <!-- Book spine/binding - Trapezoidal and scaled -->
+  <path d="M29 24 L36 23 L36 77 L29 76 Z" fill="#f59e0b" opacity="0.8"/>
   
-  <!-- Book spine/binding -->
-  <rect x="47" y="30" width="6" height="40" fill="#f59e0b" opacity="0.8"/>
+  <!-- Abstract book page shape - Scaled, centered, with perspective -->
+  <path d="M36 23 L36 77 L70 73 L70 27 Z" fill="#ffffff" opacity="0.95"/>
   
-  <!-- Abstract page lines -->
-  <rect x="30" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
-  <rect x="30" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-  <rect x="30" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-  
-  <rect x="55" y="40" width="15" height="2" fill="#6366f1" opacity="0.4" rx="1"/>
-  <rect x="55" y="45" width="12" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
-  <rect x="55" y="50" width="10" height="2" fill="#6366f1" opacity="0.3" rx="1"/>
+  <!-- Mountain Range Doodle (Patagonia style) - Background Layer (Light Gray) - More peaks, moved up -->
+  <path d="M38 65 Q42 40 46 50 Q50 40 54 50 Q58 55 62 45 Q66 50 68 65 Z" fill="#c0c0c0" stroke="none"/>
+
+  <!-- Mountain Range Doodle (Patagonia style) - Foreground Layer (Darker Gray) - Shorter with distinct peaks, strictly aligned bottom -->
+  <path d="M38 65 Q42 52 46 60 Q50 50 54 60 Q58 65 62 55 Q66 60 68 65 Z" fill="#808080" stroke="none"/>
+
 </svg> 
