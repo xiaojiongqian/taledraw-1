@@ -867,6 +867,7 @@ function App() {
     addLog('Preparing PPTX file download...', 'info');
     console.log('PPTX library check passed');
     setShowSaveOptions(false);
+    setShowDebugWindow(true); // Auto show debug window
 
     try {
       let pptx = new PptxGenJS();
@@ -938,6 +939,8 @@ function App() {
       addLog('No pages available to save.', 'warning');
       return;
     }
+    setShowSaveOptions(false);
+    setShowDebugWindow(true); // Auto show debug window
 
     // 基本浏览器兼容性检查
     if (!window.Blob || !URL.createObjectURL) {
@@ -949,19 +952,24 @@ function App() {
     addLog('Preparing HTML file download...', 'info');
     console.log('Browser download support check passed');
 
+    // ✅ 重要说明：这是系统中唯一使用Base64的场景
+    // 根据opt_base64_bin.md文档：HTML导出需要Base64嵌入以实现完全离线查看
+    // 数据流：二进制WebP图像 → 临时Base64转换 → HTML嵌入 → 用完即丢
+    console.log('HTML Export: Starting temporary Base64 conversion for offline viewing');
+
     // 在外部声明变量，以便在catch块中访问
     let htmlContent = '';
     
     try {
-      // 转换图片为Base64内嵌格式
-      addLog('Converting images to Base64 format...', 'info');
+      // ✅ 临时Base64转换 - 从二进制WebP转换为Base64（仅用于HTML嵌入）
+      addLog('Converting images to Base64 format for offline HTML viewing...', 'info');
       
       const cleanText = (text) => {
         if (!text) return '';
         return text.replace(/\uFFFD/g, '').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
       };
 
-      // 转换图片为Base64的函数 - 优先使用页面缓存
+      // ✅ 临时Base64转换函数 - 优先使用页面缓存，用完即丢
       const convertImageToBase64 = async (imageUrl, pageIndex) => {
         return new Promise((resolve, reject) => {
           if (!imageUrl) {
@@ -979,7 +987,7 @@ function App() {
           
           // 方法1：使用Fetch API获取图片数据（绕过Canvas CORS限制）
           const tryFromFetch = async () => {
-            console.log(`Attempting to fetch image ${pageIndex + 1} via Fetch API...`);
+            console.log(`HTML Export: Fetching binary WebP image ${pageIndex + 1} for Base64 conversion...`);
             
             const response = await fetch(imageUrl);
             if (!response.ok) {
@@ -989,12 +997,12 @@ function App() {
             const blob = await response.blob();
             console.log(`Image ${pageIndex + 1} fetched successfully, size: ${Math.round(blob.size / 1024)}KB`);
             
-            // 将Blob转换为dataURL
+            // ✅ 将二进制Blob临时转换为Base64 dataURL
             const dataURL = await new Promise((blobResolve, blobReject) => {
               const reader = new FileReader();
               reader.onload = () => {
                 const result = reader.result;
-                console.log(`Image ${pageIndex + 1} converted from fetch, size: ${Math.round(result.length / 1024)}KB`);
+                console.log(`HTML Export: Image ${pageIndex + 1} converted to Base64, size: ${Math.round(result.length / 1024)}KB (temporary)`);
                 blobResolve(result);
               };
               reader.onerror = () => {
@@ -1004,7 +1012,7 @@ function App() {
               reader.readAsDataURL(blob);
             });
             
-            // 成功获取dataURL
+            // ✅ 成功获取临时Base64 dataURL
             resolveOnce(dataURL);
             return true;
           };
@@ -1025,7 +1033,7 @@ function App() {
                 canvas.height = img.naturalHeight;
                 ctx.drawImage(img, 0, 0);
                 
-                const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                const dataURL = canvas.toDataURL('image/webp', 0.9);
                 console.log(`Image ${pageIndex + 1} converted from network, size: ${Math.round(dataURL.length / 1024)}KB`);
                 resolveOnce(dataURL);
               } catch (error) {
@@ -1048,7 +1056,7 @@ function App() {
                     canvas.width = retryImg.naturalWidth;
                     canvas.height = retryImg.naturalHeight;
                     ctx.drawImage(retryImg, 0, 0);
-                    const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                    const dataURL = canvas.toDataURL('image/webp', 0.9);
                     console.log(`Image ${pageIndex + 1} converted without CORS, size: ${Math.round(dataURL.length / 1024)}KB`);
                     resolveOnce(dataURL);
                   } catch (canvasError) {
@@ -1097,6 +1105,7 @@ function App() {
       
       if (totalImages > 0) {
         addLog(`Converting ${totalImages} images to embedded Base64 format...`, 'info');
+        console.log(`HTML Export: Processing ${totalImages} binary WebP images for temporary Base64 embedding`);
         
         // 顺序处理所有图片转换（避免并发问题）
         for (let i = 0; i < pages.length; i++) {
@@ -1106,14 +1115,17 @@ function App() {
             addLog(`Converting image ${i + 1}...`, 'info');
             
             try {
+              // ✅ 临时Base64转换：二进制WebP → Base64 → HTML嵌入
               const base64Image = await convertImageToBase64(page.image, i);
               
               // 检查是否成功转换为Base64
               if (base64Image && base64Image.startsWith('data:image/')) {
                 addLog(`Image ${i + 1} embedded successfully`, 'success');
+                console.log(`HTML Export: Image ${i + 1} temporarily converted to Base64 for embedding`);
                 pagesWithBase64.push({ ...page, base64Image, isEmbedded: true });
               } else {
                 addLog(`Image ${i + 1} will be linked (not embedded)`, 'warning');
+                console.log(`HTML Export: Image ${i + 1} Base64 conversion failed, will use URL link`);
                 pagesWithBase64.push({ ...page, base64Image, isEmbedded: false });
               }
             } catch (error) {
@@ -1131,18 +1143,19 @@ function App() {
           }
         }
         
-        // 统计成功嵌入的图片数量
+        // ✅ 统计临时Base64转换效果
         const embeddedCount = pagesWithBase64.filter(page => page.isEmbedded).length;
         const linkedCount = totalImages - embeddedCount;
         
         if (embeddedCount > 0) {
           addLog(`${embeddedCount} images embedded successfully` + (linkedCount > 0 ? `, ${linkedCount} images will be linked` : ''), 'success');
+          console.log(`HTML Export: ${embeddedCount} images temporarily converted to Base64 for offline viewing`);
         } else if (linkedCount > 0) {
           addLog(`All ${linkedCount} images will be linked (not embedded)`, 'warning');
+          console.log(`HTML Export: All images will use URL links (no Base64 conversion)`);
         }
       } else {
-        addLog('No images to convert', 'info');
-        pagesWithBase64.push(...pages);
+        console.log('HTML Export: No images to process for Base64 conversion');
       }
 
       // 构建HTML内容
@@ -1249,6 +1262,10 @@ function App() {
         
         const endTime = Date.now();
         const processingTime = ((endTime - startTime) / 1000).toFixed(1);
+        
+        // ✅ Base64内存清理说明
+        console.log('HTML Export: Base64 conversion completed, temporary data will be garbage collected');
+        console.log('HTML Export: All Base64 strings are now embedded in HTML and original variables freed');
         
         // 生成详细的成功信息
         let successMessage = `HTML file download initiated! (${processingTime}s)`;

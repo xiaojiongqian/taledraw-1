@@ -71,7 +71,7 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 ### 后端 (Firebase Functions) ✅
 ```
 云函数服务：
-├── generateTale (故事结构生成)
+├── generateTaleStream (流式故事结构生成)
 ├── getTaleData (获取故事数据)
 ├── generateImage (Imagen 3图像生成)
 ├── generateImageV4 (Imagen 4图像生成)

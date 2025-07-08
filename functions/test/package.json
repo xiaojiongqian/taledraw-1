@@ -1,0 +1,36 @@
+{
+  "name": "tale-draw-functions-test",
+  "version": "1.0.0",
+  "description": "系统化测试包 for Tale Draw Functions",
+  "scripts": {
+    "test": "mocha **/*.test.js --recursive --timeout 60000",
+    "test:unit": "mocha unit/*.test.js --timeout 30000",
+    "test:integration": "mocha integration/*.test.js --timeout 120000", 
+    "test:performance": "mocha performance/*.test.js --timeout 300000",
+    "test:watch": "mocha **/*.test.js --watch --recursive",
+    "test:coverage": "nyc mocha **/*.test.js --recursive",
+    "test:ci": "npm run test:unit && npm run test:integration",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:performance",
+    "emulator:start": "firebase emulators:start --only functions,firestore,storage",
+    "emulator:stop": "firebase emulators:exec --only functions 'exit 0'",
+    "lint": "eslint **/*.js",
+    "lint:fix": "eslint **/*.js --fix"
+  },
+  "dependencies": {
+    "chai": "^4.3.10",
+    "mocha": "^10.2.0",
+    "nock": "^13.4.0",
+    "axios": "^1.6.2",
+    "form-data": "^4.0.0",
+    "firebase-functions-test": "^3.1.0",
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {
+    "nyc": "^15.1.0",
+    "eslint": "^8.14.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+} 

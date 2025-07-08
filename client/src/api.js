@@ -234,9 +234,33 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
       });
     }
 
-    // 创建EventSource连接
+    // 创建fetch请求，处理流式响应
     return new Promise((resolve, reject) => {
-      // 使用fetch进行POST请求，然后处理流式响应
+      let isResolved = false;
+      let reader = null;
+      
+      const cleanup = () => {
+        if (reader) {
+          try {
+            reader.cancel();
+          } catch (e) {
+            console.warn('Failed to cancel reader:', e);
+          }
+        }
+      };
+
+      // 设置信号监听器
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          if (!isResolved) {
+            cleanup();
+            const abortError = new Error('Generation process was aborted by user');
+            abortError.name = 'AbortError';
+            reject(abortError);
+          }
+        });
+      }
+
       fetch(streamUrl, {
         method: 'POST',
         mode: 'cors',
@@ -254,36 +278,46 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
         }),
         signal: signal // 支持取消请求
       })
-      .then(response => {
+      .then(async response => {
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const reader = response.body.getReader();
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+
+        reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
-        const processStream = () => {
-          return reader.read().then(({ done, value }) => {
-            // Check if aborted
+        try {
+          while (true) {
+            // 检查是否被取消
             if (signal && signal.aborted) {
               const abortError = new Error('Generation process was aborted by user');
               abortError.name = 'AbortError';
               throw abortError;
             }
+
+            const { done, value } = await reader.read();
             
             if (done) {
-              return;
+              console.log('Stream reading completed');
+              break;
             }
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            buffer = lines.pop(); // 保留最后一行可能不完整的数据
+            buffer = lines.pop() || ''; // 保留最后一行可能不完整的数据
 
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 try {
-                  const data = JSON.parse(line.substring(6));
+                  const jsonStr = line.substring(6).trim();
+                  if (!jsonStr || jsonStr === '[DONE]') continue;
+                  
+                  const data = JSON.parse(jsonStr);
                   
                   if (data.type === 'progress') {
                     if (onProgress) {
@@ -305,23 +339,34 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
                     if (onProgress) {
                       onProgress({
                         step: 'complete',
-                        log: data.message
+                        log: data.message || 'Story generation completed!'
                       });
                     }
                     
-                    // 获取生成的数据
-                    const getTaleDataFunc = httpsCallable(functions, 'getTaleData', { timeout: 60000 });
-                    getTaleDataFunc({ taleId: data.taleId })
-                      .then(taleDataResult => {
+                    if (!isResolved) {
+                      isResolved = true;
+                      cleanup();
+                      
+                      // 获取生成的数据
+                      try {
+                        const getTaleDataFunc = httpsCallable(functions, 'getTaleData', { timeout: 60000 });
+                        const taleDataResult = await getTaleDataFunc({ taleId: data.taleId });
+                        
                         if (!taleDataResult.data) {
                           throw new Error(`Failed to retrieve generated tale (ID: ${data.taleId}).`);
                         }
                         resolve(taleDataResult.data);
-                      })
-                      .catch(reject);
+                      } catch (err) {
+                        reject(err);
+                      }
+                    }
                     return;
                   } else if (data.type === 'error' || data.error) {
-                    reject(new Error(data.message || data.error));
+                    if (!isResolved) {
+                      isResolved = true;
+                      cleanup();
+                      reject(new Error(data.message || data.error || 'Unknown error from server'));
+                    }
                     return;
                   }
                 } catch (parseError) {
@@ -329,23 +374,55 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
                 }
               }
             }
-
-            return processStream();
-          });
-        };
-
-        return processStream();
+          }
+          
+          // 如果到这里还没有resolve，说明流结束了但没有收到complete消息
+          if (!isResolved) {
+            isResolved = true;
+            cleanup();
+            reject(new Error('Stream ended unexpectedly without completion message'));
+          }
+          
+        } catch (streamError) {
+          if (!isResolved) {
+            isResolved = true;
+            cleanup();
+            
+            if (streamError.name === 'AbortError') {
+              reject(streamError);
+            } else {
+              console.error('Stream processing error:', streamError);
+              reject(new Error(`Stream processing failed: ${streamError.message}`));
+            }
+          }
+        }
       })
       .catch(error => {
-        console.error('Stream connection error:', error);
-        
-        // Check if it was user-initiated abort
-        if (error.name === 'AbortError') {
-          const abortError = new Error('Generation process was aborted by user');
-          abortError.name = 'AbortError';
-          reject(abortError);
-        } else {
-          reject(error);
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          
+          console.error('Stream connection error:', error);
+          
+          // Check if it was user-initiated abort
+          if (error.name === 'AbortError') {
+            const abortError = new Error('Generation process was aborted by user');
+            abortError.name = 'AbortError';
+            reject(abortError);
+          } else {
+            // 提供更详细的错误信息
+            let errorMessage = 'Network connection failed';
+            if (error.message) {
+              if (error.message.includes('Failed to fetch')) {
+                errorMessage = 'Unable to connect to server. Please check your internet connection and try again.';
+              } else if (error.message.includes('network error')) {
+                errorMessage = 'Network error occurred. Please check your connection and try again.';
+              } else {
+                errorMessage = `Connection error: ${error.message}`;
+              }
+            }
+            reject(new Error(errorMessage));
+          }
         }
       });
     });
@@ -359,121 +436,10 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
   }
 }
 
-// 修改原有的generateTale函数，添加流式处理选项
-export async function generateTale(storyText, pageCount, aspectRatio, onProgress, signal, useStreaming = true) {
-  // 如果启用流式处理，使用新的流式函数
-  if (useStreaming) {
-    return generateTaleStream(storyText, pageCount, aspectRatio, onProgress, signal);
-  }
-  
-  // 否则使用原有的非流式处理
-  try {
-    if (!storyText || !storyText.trim()) {
-      throw new Error('Story content cannot be empty');
-    }
-
-    // Step 1: Initialization
-    if (onProgress) {
-      onProgress({
-        step: 'initializing',
-        log: 'Initializing story generation process...'
-      });
-    }
-
-    // Step 2: Connect to AI service
-    if (onProgress) {
-      onProgress({
-        step: 'connecting',
-        log: 'Connecting to LLM service...'
-      });
-    }
-
-    // Step 3: Analyze story
-    if (onProgress) {
-      onProgress({
-        step: 'analyzing',
-        log: 'Using LLM to analyze story structure and character information...'
-      });
-    }
-
-    const generateTaleFunc = httpsCallable(functions, 'generateTale', { timeout: 540000 });
-    const storyResult = await generateTaleFunc({
-      story: storyText,
-      pageCount: pageCount,
-      aspectRatio: aspectRatio
-    });
-
-    if (!storyResult.data || !storyResult.data.success || !storyResult.data.taleId) {
-      throw new Error('Failed to initiate story generation process. No Tale ID returned.');
-    }
-
-    const { taleId, storageMode } = storyResult.data;
-    console.log(`Received Tale ID: ${taleId}, Storage Mode: ${storageMode}. Fetching full story data...`);
-
-    // Step 4: Story analysis complete
-    if (onProgress) {
-      onProgress({
-        step: 'analysis_complete',
-        log: `Story analysis complete! Generated Tale ID: ${taleId.substring(0,8)}...`
-      });
-    }
-
-    // Step 5: Fetch generated data
-    if (onProgress) {
-      onProgress({
-        step: 'fetching_data',
-        log: `Fetching generated story data from ${storageMode}...`
-      });
-    }
-
-    const getTaleDataFunc = httpsCallable(functions, 'getTaleData', { timeout: 60000 });
-    const taleDataResult = await getTaleDataFunc({ taleId });
-
-    if (!taleDataResult.data) {
-      throw new Error(`Failed to retrieve generated tale (ID: ${taleId}).`);
-    }
-
-    const taleData = taleDataResult.data;
-    if (!taleData || !taleData.pages || taleData.pages.length === 0) {
-      throw new Error('Failed to generate story pages from fetched data.');
-    }
-
-    // Step 6: Data parsing complete
-    if (onProgress) {
-      onProgress({
-        step: 'data_parsed',
-        log: `Successfully retrieved ${taleData.pages.length} pages of story content, title: "${taleData.storyTitle}"`
-      });
-    }
-
-    // Step 7: Character information processing
-    if (taleData.allCharacters && Object.keys(taleData.allCharacters).length > 0) {
-      const characterNames = Object.keys(taleData.allCharacters);
-      if (onProgress) {
-        onProgress({
-          step: 'characters_ready',
-          log: `Identified ${characterNames.length} main characters: ${characterNames.join(', ')}`
-        });
-      }
-    }
-
-    // Step 8: Prepare for image generation
-    if (onProgress) {
-      onProgress({
-        step: 'preparing_images',
-        log: 'Story structure generation complete, preparing to generate illustrations for each page...'
-      });
-    }
-    
-    return taleData;
-
-  } catch (error) {
-    console.error('Error in generateTale:', error);
-    if (onProgress) {
-      onProgress({ step: 'error', log: `Generation process interrupted: ${error.message}` });
-    }
-    throw error;
-  }
+// 修改原有的generateTale函数，直接使用流式处理
+export async function generateTale(storyText, pageCount, aspectRatio, onProgress, signal) {
+  // 直接使用流式处理，提供更好的用户体验
+  return generateTaleStream(storyText, pageCount, aspectRatio, onProgress, signal);
 }
 
 // 角色提取函数 - 通过Firebase Functions调用Vertex AI

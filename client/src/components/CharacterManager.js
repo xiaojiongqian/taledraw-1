@@ -259,7 +259,7 @@ const CharacterManager = ({ story, character, onCharacterChange, disabled = fals
                               <div className="upload-content">
                                 <span className="upload-icon">📷</span>
                                 <span className="upload-text">Upload Reference Image</span>
-                                <span className="upload-hint">Supports JPG, PNG format, max 5MB</span>
+                                <span className="upload-hint">Supports JPG, PNG, WebP format, max 5MB</span>
                               </div>
                             </label>
                           </div>

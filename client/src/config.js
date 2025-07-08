@@ -27,9 +27,11 @@ export const UTILS = {
 
   // 构建 Firebase 函数 URL
   buildFunctionUrl: (functionName, region = LOCATION) => {
-    // 对于HTTP触发器函数（如generateTaleStream），使用Cloud Run URL格式
+    // 对于HTTP触发器函数（如generateTaleStream），使用Cloud Run URL格式 (Functions 2nd Gen)
     if (functionName === 'generateTaleStream') {
-      return `https://generatetalestream-r7425ocbcq-uc.a.run.app`;
+      // 使用实际的 Cloud Run URL
+      return process.env.REACT_APP_GENERATE_TALE_STREAM_URL || 
+             'https://generatetalestream-r7425ocbcq-uc.a.run.app';
     }
     // 对于callable函数，使用传统的Cloud Functions URL格式
     return `https://${region}-${PROJECT_ID}.cloudfunctions.net/${functionName}`;
