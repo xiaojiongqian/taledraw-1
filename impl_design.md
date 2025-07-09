@@ -305,7 +305,6 @@ async function compressImageToWebP(base64Data) {
 | `getTaleData`            | 256MB    | 60s     | 简单的数据库/存储读取操作               |
 | `generateImage`          | 1GB      | 300s    | 调用Imagen API + Sharp图像处理          |
 | `generateImageV4`        | 1GB      | 300s    | 调用Imagen 4 API + Sharp图像处理        |
-
 | `extractCharacter`       | 512MB    | 120s    | 调用Gemini，数据量较小                  |
 | `healthCheck`            | 128MB    | 60s     | 最轻量级任务，最低内存配置              |
 

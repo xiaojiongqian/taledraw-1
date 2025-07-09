@@ -6,12 +6,15 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
+    "deploy:my-functions": "firebase deploy --only functions:generateTaleStream,getTaleData,generateImage,generateImageV4,healthCheck,imageProxy",
     "deploy:stream": "firebase deploy --only functions:generateTaleStream",
     "deploy:image": "firebase deploy --only functions:generateImage,generateImageV4",
     "deploy:core": "firebase deploy --only functions:generateTaleStream,getTaleData",
     "deploy:all-images": "firebase deploy --only functions:generateImage,generateImageV4",
+    "deploy:health": "firebase deploy --only functions:healthCheck",
     "logs": "firebase functions:log",
-    "lint": "echo \"lint command disabled\"",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
     "predeploy": "npm run lint"
   },
   "engines": {

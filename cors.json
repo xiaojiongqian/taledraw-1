@@ -16,7 +16,10 @@
       "Content-Length",
       "Content-MD5",
       "Date",
-      "X-Api-Version"
+      "X-Api-Version",
+      "Access-Control-Allow-Origin",
+      "Access-Control-Allow-Methods",
+      "Access-Control-Allow-Headers"
     ]
   }
 ] 

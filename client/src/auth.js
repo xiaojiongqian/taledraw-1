@@ -2,6 +2,7 @@ import { GoogleAuth } from 'google-auth-library';
 
 // 导入配置
 import { PROJECT_ID, LOCATION } from './config';
+import { safeLog } from './utils/logger';
 
 // OAuth2 Client配置
 const CLIENT_ID = 'your-oauth-client-id'; // 需要在GCP Console创建
@@ -27,7 +28,7 @@ class GCPAuthService {
       
       return true;
     } catch (error) {
-      console.error('初始化Google Auth失败:', error);
+      safeLog.error('初始化Google Auth失败:', error);
       return false;
     }
   }
@@ -45,7 +46,7 @@ class GCPAuthService {
       
       return this.accessToken;
     } catch (error) {
-      console.error('获取访问令牌失败:', error);
+      safeLog.error('获取访问令牌失败:', error);
       throw error;
     }
   }

@@ -172,13 +172,13 @@ const UTILS = {
 
   // 生成 Gemini 请求配置
   buildGeminiRequest: (story, systemPrompt) => ({
-    contents: [{ role: "user", parts: [{ text: story }] }],
+    contents: [{ role: 'user', parts: [{ text: story }] }],
     systemInstruction: { parts: [{ text: systemPrompt }] },
     generationConfig: {
       temperature: 0.8,
       topP: 0.95,
       maxOutputTokens: API_CONFIG.MAX_OUTPUT_TOKENS,
-      responseMimeType: "application/json"
+      responseMimeType: 'application/json'
     }
   }),
 

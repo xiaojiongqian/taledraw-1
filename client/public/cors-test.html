@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Storage CORS Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <h1>Firebase Storage CORS Test</h1>
+    <p>This test verifies that CORS is properly configured for Firebase Storage access from localhost:3000</p>
+    
+    <button onclick="testCorsAccess()">Test CORS Access</button>
+    <div id="result"></div>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Make sure you're running this from <code>http://localhost:3000</code></li>
+        <li>Click the "Test CORS Access" button</li>
+        <li>Check the console for detailed logs</li>
+        <li>A 404 error is expected and indicates CORS is working</li>
+    </ol>
+    
+    <script>
+        async function testCorsAccess() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result">Testing CORS access...</div>';
+            
+            // 测试Firebase Functions代理端点
+            console.log('Testing Firebase Functions Image Proxy...');
+            const testUrl = 'https://storage.googleapis.com/ai-app-taskforce.appspot.com/tale-images/test.webp';
+            const proxyUrl = `https://us-central1-ai-app-taskforce.cloudfunctions.net/imageProxy?url=${encodeURIComponent(testUrl)}`;
+            
+            try {
+                const response = await fetch(proxyUrl, {
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<div class="result success">✅ Image proxy working! This will solve the CORS issue.</div>';
+                    console.log('Image proxy test passed!');
+                } else if (response.status === 404) {
+                    resultDiv.innerHTML = '<div class="result warning">⚠️ Image proxy working! (404 error is expected for test file)</div>';
+                    console.log('Image proxy test passed - file not found is expected');
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Proxy Error: ${response.status} - ${response.statusText}</div>`;
+                    console.log('Proxy Error:', response.status, response.statusText);
+                }
+            } catch (error) {
+                console.error('Proxy Error:', error);
+                
+                // 如果代理失败，测试直接访问
+                resultDiv.innerHTML = '<div class="result">Proxy failed, testing direct CORS access...</div>';
+                
+                try {
+                    const response = await fetch(testUrl, {
+                        mode: 'cors',
+                        credentials: 'omit'
+                    });
+                    
+                    if (response.ok) {
+                        resultDiv.innerHTML = '<div class="result success">✅ Direct CORS access working!</div>';
+                        console.log('Direct CORS test passed!');
+                    } else if (response.status === 404) {
+                        resultDiv.innerHTML = '<div class="result warning">⚠️ Direct CORS working! (404 error is expected for test file)</div>';
+                        console.log('Direct CORS test passed - file not found is expected');
+                    } else {
+                        resultDiv.innerHTML = `<div class="result error">❌ HTTP Error: ${response.status} - ${response.statusText}</div>`;
+                        console.log('HTTP Error:', response.status, response.statusText);
+                    }
+                } catch (directError) {
+                    if (directError.message.includes('CORS') || directError.message.includes('cross-origin')) {
+                        resultDiv.innerHTML = '<div class="result error">❌ Both proxy and direct access failed with CORS errors.<br><br>Proxy Error: ' + error.message + '<br>Direct Error: ' + directError.message + '</div>';
+                        console.error('Both methods failed:', { proxy: error, direct: directError });
+                    } else {
+                        resultDiv.innerHTML = '<div class="result error">❌ Network Error: ' + directError.message + '</div>';
+                        console.error('Network Error:', directError);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html> 

@@ -339,7 +339,7 @@ describe('内存使用分析和配置优化测试', function() {
       
       const growthRate = (lastAvg - firstAvg) / firstAvg;
       
-      console.log(`\n🔍 内存泄漏分析:`);
+      console.log('\n🔍 内存泄漏分析:');
       console.log(`   初期平均: ${monitor.formatBytes(firstAvg)}`);
       console.log(`   后期平均: ${monitor.formatBytes(lastAvg)}`);
       console.log(`   增长率: ${(growthRate * 100).toFixed(2)}%`);
@@ -414,10 +414,10 @@ describe('内存使用分析和配置优化测试', function() {
         console.log(`   💰 可节省 ${((currentConfigMB - recommendedMB) / currentConfigMB * 100).toFixed(1)}% 内存成本`);
       } else if (currentConfigMB < recommendedMB) {
         console.log(`   ⬆️  建议提高到 ${recommendedMB}MB (当前配置可能不足)`);
-        console.log(`   ⚠️  存在内存不足风险`);
+        console.log('   ⚠️  存在内存不足风险');
       } else {
         console.log(`   ✅ 当前配置 ${currentConfigMB}MB 合理`);
-        console.log(`   📊 在安全范围内，无需调整`);
+        console.log('   📊 在安全范围内，无需调整');
       }
       
       // 不同场景的配置建议

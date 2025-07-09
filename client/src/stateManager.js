@@ -1,4 +1,6 @@
 // State Manager - Handles application state persistence and recovery
+import { safeLog } from './utils/logger';
+
 class StateManager {
   constructor() {
     this.STORAGE_KEY = 'taledraw_app_state';
@@ -38,10 +40,10 @@ class StateManager {
       });
       
       localStorage.setItem(this.STORAGE_KEY, jsonString);
-      console.log('State saved to localStorage');
+      safeLog.debug('State saved to localStorage');
       return true;
     } catch (error) {
-      console.error('Failed to save state:', error);
+      safeLog.error('Failed to save state:', error);
       return false;
     }
   }
@@ -59,10 +61,10 @@ class StateManager {
       };
       
       localStorage.setItem(this.UI_STORAGE_KEY, JSON.stringify(uiStateToSave));
-      console.log('UI state saved to localStorage (excluding logs)');
+      safeLog.debug('UI state saved to localStorage (excluding logs)');
       return true;
     } catch (error) {
-      console.error('Failed to save UI state:', error);
+      safeLog.error('Failed to save UI state:', error);
       return false;
     }
   }
@@ -72,7 +74,7 @@ class StateManager {
     try {
       const savedState = localStorage.getItem(this.STORAGE_KEY);
       if (!savedState) {
-        console.log('No saved state found');
+        safeLog.debug('No saved state found');
         return null;
       }
 
@@ -87,7 +89,7 @@ class StateManager {
       
       // Check version compatibility
       if (parsedState.version !== this.VERSION) {
-        console.warn('State version mismatch, clearing old data');
+        safeLog.warn('State version mismatch, clearing old data');
         this.clearState();
         return null;
       }
@@ -98,15 +100,15 @@ class StateManager {
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       
       if (now - savedTime > TWENTY_FOUR_HOURS) {
-        console.log('Saved state expired, clearing old data');
+        safeLog.debug('Saved state expired, clearing old data');
         this.clearState();
         return null;
       }
 
-      console.log('Restoring state from localStorage');
+      safeLog.debug('Restoring state from localStorage');
       return parsedState;
     } catch (error) {
-      console.error('Failed to restore state:', error);
+      safeLog.error('Failed to restore state:', error);
       this.clearState();
       return null;
     }
@@ -117,7 +119,7 @@ class StateManager {
     try {
       const savedUIState = localStorage.getItem(this.UI_STORAGE_KEY);
       if (!savedUIState) {
-        console.log('No saved UI state found');
+        safeLog.debug('No saved UI state found');
         return null;
       }
 
@@ -125,7 +127,7 @@ class StateManager {
       
       // Check version compatibility
       if (parsedUIState.version !== this.VERSION) {
-        console.warn('UI state version mismatch, clearing old UI data');
+        safeLog.warn('UI state version mismatch, clearing old UI data');
         this.clearUIState();
         return null;
       }
@@ -136,15 +138,15 @@ class StateManager {
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       
       if (now - savedTime > TWENTY_FOUR_HOURS) {
-        console.log('Saved UI state expired, clearing old UI data');
+        safeLog.debug('Saved UI state expired, clearing old UI data');
         this.clearUIState();
         return null;
       }
 
-      console.log('Restoring UI state from localStorage');
+      safeLog.debug('Restoring UI state from localStorage');
       return parsedUIState;
     } catch (error) {
-      console.error('Failed to restore UI state:', error);
+      safeLog.error('Failed to restore UI state:', error);
       this.clearUIState();
       return null;
     }
@@ -154,9 +156,9 @@ class StateManager {
   clearState() {
     try {
       localStorage.removeItem(this.STORAGE_KEY);
-      console.log('Cleared saved state');
+      safeLog.debug('Cleared saved state');
     } catch (error) {
-      console.error('Failed to clear state:', error);
+      safeLog.error('Failed to clear state:', error);
     }
   }
 
@@ -164,9 +166,9 @@ class StateManager {
   clearUIState() {
     try {
       localStorage.removeItem(this.UI_STORAGE_KEY);
-      console.log('Cleared saved UI state');
+      safeLog.debug('Cleared saved UI state');
     } catch (error) {
-      console.error('Failed to clear UI state:', error);
+      safeLog.error('Failed to clear UI state:', error);
     }
   }
 
@@ -207,7 +209,7 @@ class StateManager {
         hasGeneratedContent: parsedState.hasGeneratedContent
       };
     } catch (error) {
-      console.error('Failed to get state info:', error);
+      safeLog.error('Failed to get state info:', error);
       return null;
     }
   }
@@ -244,10 +246,10 @@ class StateManager {
 
       const cleanedState = cleanObject(parsedState);
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cleanedState));
-      console.log('Cleaned corrupted data from localStorage');
+      safeLog.debug('Cleaned corrupted data from localStorage');
       return true;
     } catch (error) {
-      console.error('Failed to clean corrupted data:', error);
+      safeLog.error('Failed to clean corrupted data:', error);
       return false;
     }
   }

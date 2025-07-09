@@ -53,7 +53,7 @@ describe('Performance and Load Tests', function() {
       const maxTime = Math.max(...times);
       const minTime = Math.min(...times);
       
-      console.log(`Health check performance statistics:`);
+      console.log('Health check performance statistics:');
       console.log(`- Average response time: ${averageTime.toFixed(2)}ms`);
       console.log(`- Max response time: ${maxTime.toFixed(2)}ms`);
       console.log(`- Min response time: ${minTime.toFixed(2)}ms`);
@@ -94,7 +94,7 @@ describe('Performance and Load Tests', function() {
       const totalTime = Date.now() - startTime;
       const averageTimePerRequest = totalTime / concurrentRequests;
       
-      console.log(`Concurrent test results:`);
+      console.log('Concurrent test results:');
       console.log(`- Concurrent requests: ${concurrentRequests}`);
       console.log(`- Total time: ${totalTime}ms`);
       console.log(`- Average time per request: ${averageTimePerRequest.toFixed(2)}ms`);
@@ -142,7 +142,7 @@ describe('Performance and Load Tests', function() {
       const currentMemory = process.memoryUsage();
       const heapUsedDiff = currentMemory.heapUsed - initialMemory.heapUsed;
       
-      console.log(`Memory usage statistics:`);
+      console.log('Memory usage statistics:');
       console.log(`- Initial heap memory: ${Math.round(initialMemory.heapUsed / 1024 / 1024)}MB`);
       console.log(`- Current heap memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB`);
       console.log(`- Heap memory growth: ${Math.round(heapUsedDiff / 1024 / 1024)}MB`);
@@ -282,9 +282,9 @@ describe('Performance and Load Tests', function() {
       const avgBatchTime = batchTimes.reduce((a, b) => a + b, 0) / batchTimes.length;
       const maxBatchTime = Math.max(...batchTimes);
       
-      console.log(`Stress test results:`);
+      console.log('Stress test results:');
       console.log(`- Total requests: ${requestCount}`);
-      console.log(`- Success rate: 100%`);
+      console.log('- Success rate: 100%');
       console.log(`- Average batch time: ${avgBatchTime.toFixed(2)}ms`);
       console.log(`- Max batch time: ${maxBatchTime.toFixed(2)}ms`);
       
@@ -302,7 +302,7 @@ describe('Performance and Load Tests', function() {
       
       const afterCleanup = process.memoryUsage();
       
-      console.log(`Memory cleanup comparison:`);
+      console.log('Memory cleanup comparison:');
       console.log(`- Before cleanup: ${Math.round(beforeCleanup.heapUsed / 1024 / 1024)}MB`);
       console.log(`- After cleanup: ${Math.round(afterCleanup.heapUsed / 1024 / 1024)}MB`);
       

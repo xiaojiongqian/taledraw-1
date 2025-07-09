@@ -15,7 +15,7 @@ module.exports = {
     'linebreak-style': ['error', 'unix'],
     'quotes': ['error', 'single'],
     'semi': ['error', 'always'],
-    'no-unused-vars': ['warn'],
+    'no-unused-vars': ['warn', { 'argsIgnorePattern': '^_' }],
     'no-console': 'off', // 允许在云函数中使用 console.log
   },
 }; 

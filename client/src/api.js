@@ -4,6 +4,7 @@ import { getAuth } from 'firebase/auth';
 
 // 导入配置
 import { API_CONFIG, UTILS } from './config';
+import { safeLog } from './utils/logger';
 
 // 现在所有AI服务都通过Firebase Functions访问Vertex AI
 // 数据存储也完全通过云函数管理，支持 Cloud Storage 和 Firestore 两种模式
@@ -34,7 +35,7 @@ async function retryWithBackoff(asyncFn, maxRetries = 3, baseDelay = 1000, onRet
       
       // 计算延迟时间（指数退避 + 随机抖动）
       const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-      console.log(`Attempt ${attempt + 1} failed, retrying in ${delay.toFixed(0)}ms...`);
+      safeLog.debug(`Attempt ${attempt + 1} failed, retrying in ${delay.toFixed(0)}ms...`);
       
       // 调用重试回调
       if (onRetry) {
@@ -86,8 +87,8 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     // 根据配置动态选择函数名
     const functionName = UTILS.getImageGenerationFunction(); 
     
-    console.log(UTILS.formatLogMessage(pageIndex, `Generating image - Function: ${functionName}, Version: ${API_CONFIG.IMAGEN_API_VERSION}`));
-    console.log(`Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
+    safeLog.debug(UTILS.formatLogMessage(pageIndex, `Generating image - Function: ${functionName}, Version: ${API_CONFIG.IMAGEN_API_VERSION}`));
+    safeLog.debug(`Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
 
     const generateImage = httpsCallable(functions, functionName);
     
@@ -152,7 +153,7 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
       const characterInfo = sceneCharacters.length > 0 ? sceneCharacters.join(', ') : 'no characters';
       onProgress(`Generating page ${pageIndex + 1} illustration - ${sceneType}, characters: ${characterInfo}`, 'image');
     }
-    console.log(`Page ${pageIndex + 1}: ${sceneType} - Characters: [${sceneCharacters.join(', ')}]`);
+    safeLog.debug(`Page ${pageIndex + 1}: ${sceneType} - Characters: [${sceneCharacters.join(', ')}]`);
     
     // Send image generation request
     if (onProgress) {
@@ -162,13 +163,13 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     const result = await generateImage(requestData);
     
     if (result.data && result.data.success && result.data.imageUrl) {
-      console.log(UTILS.formatLogMessage(pageIndex, 'image generated successfully'));
+      safeLog.debug(UTILS.formatLogMessage(pageIndex, 'image generated successfully'));
       if (onProgress) {
         onProgress(UTILS.formatLogMessage(pageIndex, 'illustration generated successfully!'), 'success');
       }
       return result.data.imageUrl;
     } else {
-      console.error(UTILS.formatErrorMessage('API returned error'), result.data);
+      safeLog.error(UTILS.formatErrorMessage('API returned error'), result.data);
       throw new Error(result.data.error || UTILS.formatErrorMessage('API returned invalid response'));
     }
   };
@@ -177,19 +178,19 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     // 直接调用图像生成，不进行重试
     return await attemptGeneration();
   } catch (error) {
-    console.error(`Error generating page ${pageIndex + 1} image:`, error);
+    safeLog.error(`Error generating page ${pageIndex + 1} image:`, error);
     
     // 提供详细的错误信息
     let errorMessage = '';
     if (error.code === 'functions/unauthenticated') {
       errorMessage = 'Firebase authentication error';
-      console.error('Firebase authentication error, please ensure you are logged in');
+      safeLog.error('Firebase authentication error, please ensure you are logged in');
     } else if (error.code === 'functions/permission-denied') {
       errorMessage = 'Permission denied';
-      console.error('Permission denied, please check Firebase rules');
+      safeLog.error('Permission denied, please check Firebase rules');
     } else if (error.code === 'functions/internal') {
       errorMessage = 'Server internal error';
-      console.error('Server internal error');
+      safeLog.error('Server internal error');
     } else {
       errorMessage = error.message || 'Unknown error';
     }
@@ -199,7 +200,7 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     }
     
     // 直接抛出错误，不再使用占位符图像
-    console.log(`Image generation failed, throwing error instead of using placeholder...`);
+    safeLog.debug(`Image generation failed, throwing error instead of using placeholder...`);
     throw new Error(errorMessage);
   }
 }
@@ -244,7 +245,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
           try {
             reader.cancel();
           } catch (e) {
-            console.warn('Failed to cancel reader:', e);
+            safeLog.warn('Failed to cancel reader:', e);
           }
         }
       };
@@ -303,7 +304,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
             const { done, value } = await reader.read();
             
             if (done) {
-              console.log('Stream reading completed');
+              safeLog.debug('Stream reading completed');
               break;
             }
 
@@ -370,7 +371,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
                     return;
                   }
                 } catch (parseError) {
-                  console.warn('Failed to parse SSE data:', line, parseError);
+                  safeLog.warn('Failed to parse SSE data:', line, parseError);
                 }
               }
             }
@@ -391,7 +392,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
             if (streamError.name === 'AbortError') {
               reject(streamError);
             } else {
-              console.error('Stream processing error:', streamError);
+              safeLog.error('Stream processing error:', streamError);
               reject(new Error(`Stream processing failed: ${streamError.message}`));
             }
           }
@@ -402,7 +403,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
           isResolved = true;
           cleanup();
           
-          console.error('Stream connection error:', error);
+          safeLog.error('Stream connection error:', error);
           
           // Check if it was user-initiated abort
           if (error.name === 'AbortError') {
@@ -428,7 +429,7 @@ export async function generateTaleStream(storyText, pageCount, aspectRatio, onPr
     });
 
   } catch (error) {
-    console.error('Error in generateTaleStream:', error);
+    safeLog.error('Error in generateTaleStream:', error);
     if (onProgress) {
       onProgress({ step: 'error', log: `Stream generation failed: ${error.message}` });
     }

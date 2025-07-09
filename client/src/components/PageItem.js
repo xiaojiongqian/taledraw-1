@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './PageItem.css';
+import { safeLog } from '../utils/logger';
 
 const PageItem = ({ 
   page, 
@@ -298,11 +299,11 @@ const PageItem = ({
                     if (elem.requestFullscreen) {
                       elem.requestFullscreen().catch(function() {
                         // Fullscreen failed, that's ok
-                        console.log('Auto-fullscreen not available or denied');
+                        safeLog.debug('Auto-fullscreen not available or denied');
                       });
                     }
                   } else {
-                    console.log('Auto-fullscreen skipped due to active operation');
+                    safeLog.debug('Auto-fullscreen skipped due to active operation');
                   }
                 }, 2000); // Increased delay to 2 seconds
               });
@@ -321,7 +322,7 @@ const PageItem = ({
                     e.target.closest('.user-hint') ||
                     e.target.closest('button') ||
                     e.target.classList.contains('btn')) {
-                  console.log('Double-click ignored due to active operation or UI element');
+                  safeLog.debug('Double-click ignored due to active operation or UI element');
                   return;
                 }
                 
@@ -333,17 +334,17 @@ const PageItem = ({
                 if (document.fullscreenElement) {
                   // Currently in fullscreen, exit fullscreen
                   document.exitFullscreen().catch(function(err) {
-                    console.log('Exit fullscreen failed:', err);
+                    safeLog.debug('Exit fullscreen failed:', err);
                   });
-                  console.log('Exiting fullscreen via double-click');
+                  safeLog.debug('Exiting fullscreen via double-click');
                 } else {
                   // Not in fullscreen, enter fullscreen
                   const elem = document.documentElement;
                   if (elem.requestFullscreen) {
                     elem.requestFullscreen().catch(function(err) {
-                      console.log('Enter fullscreen failed:', err);
+                      safeLog.debug('Enter fullscreen failed:', err);
                     });
-                    console.log('Entering fullscreen via double-click');
+                    safeLog.debug('Entering fullscreen via double-click');
                   }
                 }
               });
@@ -405,11 +406,11 @@ const PageItem = ({
                   document.body.removeChild(link);
                   window.URL.revokeObjectURL(url);
                   
-                  console.log(\`Image downloaded from cache with original format: \${blob.type} (\${fileExtension})\`);
-                  console.log('Cache hit - no network request needed');
+                  safeLog.debug(\`Image downloaded from cache with original format: \${blob.type} (\${fileExtension})\`);
+                  safeLog.debug('Cache hit - no network request needed');
                   
                 } catch (cacheError) {
-                  console.warn('Cache-only download failed, trying Canvas method:', cacheError);
+                  safeLog.warn('Cache-only download failed, trying Canvas method:', cacheError);
                   
                   try {
                     // Method 2: Canvas fallback (converts to PNG but works offline)
@@ -428,7 +429,7 @@ const PageItem = ({
                     
                     canvas.toBlob(function(blob) {
                       if (!blob) {
-                        console.error('Canvas blob creation failed');
+                        safeLog.error('Canvas blob creation failed');
                         return;
                       }
                       
@@ -441,11 +442,11 @@ const PageItem = ({
                       document.body.removeChild(link);
                       window.URL.revokeObjectURL(url);
                       
-                      console.log('Image downloaded via Canvas method (converted to PNG)');
+                      safeLog.debug('Image downloaded via Canvas method (converted to PNG)');
                     }, 'image/png', 1.0);
                     
                   } catch (canvasError) {
-                    console.warn('Canvas download also failed, using network fallback:', canvasError);
+                    safeLog.warn('Canvas download also failed, using network fallback:', canvasError);
                     
                     // Method 3: Network fallback
                     try {
@@ -464,9 +465,9 @@ const PageItem = ({
                       document.body.removeChild(link);
                       window.URL.revokeObjectURL(url);
                       
-                      console.log('Image downloaded via network request (last resort)');
+                      safeLog.debug('Image downloaded via network request (last resort)');
                     } catch (fetchError) {
-                      console.error('All download methods failed:', fetchError);
+                      safeLog.error('All download methods failed:', fetchError);
                       alert('Download failed. Please try right-clicking the image and selecting "Save Image As..."');
                     }
                   }
@@ -525,17 +526,17 @@ const PageItem = ({
                   e.preventDefault();
                   // Don't trigger F11 fullscreen during right-click operations
                   if (isRightClickActive || isSaving) {
-                    console.log('F11 fullscreen blocked due to active operation');
+                    safeLog.debug('F11 fullscreen blocked due to active operation');
                     return;
                   }
                   
                   if (!document.fullscreenElement) {
                     document.documentElement.requestFullscreen().catch(function(err) {
-                      console.log('F11 enter fullscreen failed:', err);
+                      safeLog.debug('F11 enter fullscreen failed:', err);
                     });
                   } else {
                     document.exitFullscreen().catch(function(err) {
-                      console.log('F11 exit fullscreen failed:', err);
+                      safeLog.debug('F11 exit fullscreen failed:', err);
                     });
                   }
                 }
@@ -555,12 +556,12 @@ const PageItem = ({
               document.addEventListener('contextmenu', function(e) {
                 // Allow context menu but set flag to prevent conflicts
                 isRightClickActive = true;
-                console.log('Right-click context menu opened');
+                safeLog.debug('Right-click context menu opened');
                 
                 // Reset flag after a delay
                 setTimeout(function() {
                   isRightClickActive = false;
-                  console.log('Right-click operation completed');
+                  safeLog.debug('Right-click operation completed');
                 }, 2000);
               });
               
@@ -568,7 +569,7 @@ const PageItem = ({
               document.addEventListener('mousedown', function(e) {
                 if (e.button === 2) { // Right mouse button
                   isRightClickActive = true;
-                  console.log('Right mouse button pressed');
+                  safeLog.debug('Right mouse button pressed');
                 }
               });
               
@@ -587,7 +588,7 @@ const PageItem = ({
                   // User switched away, reset states
                   isRightClickActive = false;
                   isSaving = false;
-                  console.log('Document hidden, resetting operation flags');
+                  safeLog.debug('Document hidden, resetting operation flags');
                 }
               });
               
@@ -595,7 +596,7 @@ const PageItem = ({
               window.addEventListener('blur', function() {
                 isRightClickActive = false;
                 isSaving = false;
-                console.log('Window lost focus, resetting operation flags');
+                safeLog.debug('Window lost focus, resetting operation flags');
               });
             </script>
           </body>

@@ -54,35 +54,35 @@ describe('Tale Draw - Complete Integration Tests', () => {
       console.log('📖 Stream story generation test (simulated)');
       
       const mockTaleData = {
-        storyTitle: "Little Red Riding Hood",
-        artStyle: "children's book watercolor illustration",
+        storyTitle: 'Little Red Riding Hood',
+        artStyle: 'children\'s book watercolor illustration',
         pages: [
           {
             pageNumber: 1,
-            title: "Little Red Riding Hood sets off",
-            text: "Little Red Riding Hood carried a basket and walked to grandma's house.",
-            sceneType: "forest path",
-            sceneCharacters: ["Little Red Riding Hood"],
-            imagePrompt: "A cute little girl in a red hood walking through a peaceful forest with tall trees and colorful wildflowers",
-            scenePrompt: "peaceful forest with tall trees and colorful wildflowers",
-            characterPrompts: "cute little girl in a red hood"
+            title: 'Little Red Riding Hood sets off',
+            text: 'Little Red Riding Hood carried a basket and walked to grandma\'s house.',
+            sceneType: 'forest path',
+            sceneCharacters: ['Little Red Riding Hood'],
+            imagePrompt: 'A cute little girl in a red hood walking through a peaceful forest with tall trees and colorful wildflowers',
+            scenePrompt: 'peaceful forest with tall trees and colorful wildflowers',
+            characterPrompts: 'cute little girl in a red hood'
           },
           {
             pageNumber: 2,
-            title: "Meeting the wolf",
-            text: "On the way, she met a big bad wolf who asked where she was going.",
-            sceneType: "forest clearing",
-            sceneCharacters: ["Little Red Riding Hood", "Big Bad Wolf"],
-            imagePrompt: "Little Red Riding Hood carrying a basket of food",
-            scenePrompt: "forest clearing with sunlight",
-            characterPrompts: "Little Red Riding Hood and big bad wolf"
+            title: 'Meeting the wolf',
+            text: 'On the way, she met a big bad wolf who asked where she was going.',
+            sceneType: 'forest clearing',
+            sceneCharacters: ['Little Red Riding Hood', 'Big Bad Wolf'],
+            imagePrompt: 'Little Red Riding Hood carrying a basket of food',
+            scenePrompt: 'forest clearing with sunlight',
+            characterPrompts: 'Little Red Riding Hood and big bad wolf'
           }
         ],
         allCharacters: {
-          "Little Red Riding Hood": {
-            appearance: "A young girl with brown braided hair, wearing a bright red hooded cape",
-            clothing: "Red hooded cape, white dress, brown shoes",
-            personality: "Innocent and kind, walks with confident steps"
+          'Little Red Riding Hood': {
+            appearance: 'A young girl with brown braided hair, wearing a bright red hooded cape',
+            clothing: 'Red hooded cape, white dress, brown shoes',
+            personality: 'Innocent and kind, walks with confident steps'
           }
         }
       };
@@ -111,7 +111,7 @@ describe('Tale Draw - Complete Integration Tests', () => {
     it('Step 4: Single page image generation - Imagen 3', async () => {
       const wrapped = testEnv.wrap(functions.generateImage);
       const req = createMockRequest({
-        prompt: "A cute little girl in a red hood walking through a peaceful forest with tall trees and colorful flowers",
+        prompt: 'A cute little girl in a red hood walking through a peaceful forest with tall trees and colorful flowers',
         pageIndex: 0,
         aspectRatio: '1:1',
         seed: 42
@@ -140,7 +140,7 @@ describe('Tale Draw - Complete Integration Tests', () => {
     it('Step 5: Single page image generation - Imagen 4', async () => {
       const wrapped = testEnv.wrap(functions.generateImageV4);
       const req = createMockRequest({
-        prompt: "A friendly grandmother in her cozy cottage, wearing glasses and an apron, children's book illustration style",
+        prompt: 'A friendly grandmother in her cozy cottage, wearing glasses and an apron, children\'s book illustration style',
         pageIndex: 1,
         aspectRatio: '16:9',
         seed: 42,
