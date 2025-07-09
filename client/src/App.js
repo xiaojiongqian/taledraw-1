@@ -1352,7 +1352,7 @@ function App() {
     return (
       <div className="App">
         <header className="App-header">
-          <h1>📚 AI Story Book Generator</h1>
+          <h1>📚 AI story book generator</h1>
           <p>Generate beautiful illustrated storybooks for your stories using AI technology</p>
         </header>
         <main className="auth-container">
@@ -1371,8 +1371,8 @@ function App() {
       <div className="App">
         <header className="App-header">
           <h1>
-            <img className="app-icon" src="/icon-mono.svg" alt="Tale Draw Icon" width="40" height="40" />
-            Tale Draw - Story Book Generator
+            <img className="app-icon" src="/icon-mono.svg" alt="Taledraw Icon" width="40" height="40" />
+            Taledraw - story book generator
           </h1>
         </header>
         <main className="auth-container">
@@ -1434,8 +1434,8 @@ function App() {
       <header className="App-header">
         <div className="header-content">
           <h1>
-            <img className="app-icon" src="/icon-mono.svg" alt="Tale Draw Icon" width="40" height="40" />
-            Tale Draw - Story Book Generator
+            <img className="app-icon" src="/icon-mono.svg" alt="Taledraw Icon" width="40" height="40" />
+            Taledraw - story book generator
           </h1>
           <div className="user-info">
             <span>Welcome, {user.email}</span>
@@ -1446,7 +1446,7 @@ function App() {
       
       <main className="main-content">
         <div className="story-input-section">
-          <h2>Enter Your Story</h2>
+          <h2>Enter your story</h2>
           <div className="story-input">
             <textarea
               value={story}
