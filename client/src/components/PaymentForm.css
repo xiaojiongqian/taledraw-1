@@ -1,0 +1,114 @@
+.payment-form-container {
+  max-width: 500px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 100001; /* 确保表单容器显示在最上层 */
+}
+
+.payment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.payment-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.payment-close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.payment-close-button:hover {
+  color: #1f2937;
+}
+
+.payment-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.payment-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(99, 102, 241, 0.2);
+  border-radius: 50%;
+  border-top-color: #6366f1;
+  animation: spin 1s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.payment-error {
+  background-color: #fee2e2;
+  color: #ef4444;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.checkout-element-container {
+  min-height: 450px;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  position: relative;
+  z-index: 100001; /* 确保结账元素显示在最上层 */
+}
+
+.checkout-element-container.hidden {
+  display: none;
+}
+
+.payment-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  font-weight: 500;
+}
+
+.payment-button-cancel {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.payment-button-cancel:hover {
+  background-color: #e5e7eb;
+}
+
+/* 确保Stripe iframe元素显示在最上层 */
+iframe[name^="__privateStripeFrame"],
+iframe[name^="__privateStripeController"] {
+  z-index: 100002 !important; /* 确保Stripe表单元素显示在最顶层 */
+} 

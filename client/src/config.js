@@ -11,6 +11,21 @@ export const API_CONFIG = {
   IMAGEN4_REGION: 'us-central1'
 };
 
+// 环境配置
+export const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+export const BASE_URL = IS_PRODUCTION
+  ? 'https://ai-app-taskforce.web.app' 
+  : 'http://localhost:3000';
+
+// === Stripe支付配置 ===
+export const STRIPE_CONFIG = {
+  PUBLISHABLE_KEY: process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || 'pk_test_51RiV0qH1NCrMVCYNVVfKwgQwwBmSZTqtgagTSoG6pXu6diaXUKT1ZzAdGlOonLK3U3XkXHLyuDfdGddmetIzeJ1A00X9R9ciOl',
+  PRICE_ID: process.env.REACT_APP_STRIPE_PRICE_ID || 'price_1RiV4lH1NCrMVCYNxZgC4bHN',
+  SUCCESS_URL: process.env.REACT_APP_STRIPE_SUCCESS_URL || `${BASE_URL}/success`,
+  CANCEL_URL: process.env.REACT_APP_STRIPE_CANCEL_URL || `${BASE_URL}/cancel`
+};
+
 // === 工具函数 ===
 export const UTILS = {
   // 获取 Imagen 区域
@@ -53,6 +68,7 @@ const config = {
   PROJECT_ID,
   LOCATION,
   API_CONFIG,
+  STRIPE_CONFIG,
   UTILS
 };
 

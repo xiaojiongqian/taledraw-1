@@ -6,6 +6,9 @@ import { generateTaleStream, generateImageWithImagen } from './api';
 import PageSelector from './components/PageSelector';
 import AspectRatioSelector from './components/AspectRatioSelector';
 import PageItem from './components/PageItem';
+import CheckoutButton from './components/CheckoutButton';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import PptxGenJS from 'pptxgenjs';
 import stateManager from './stateManager';
 import { safeLog } from './utils/logger';
@@ -1648,6 +1651,7 @@ function App() {
   // 主应用界面
   return (
     <div className="App">
+      <ToastContainer />
       <header className="App-header">
         <div className="header-content">
           <h1>
@@ -1656,6 +1660,7 @@ function App() {
           </h1>
           <div className="user-info">
             <span>Welcome, {user.email}</span>
+            <CheckoutButton className="checkout-btn-header" />
             <button onClick={handleLogout} className="btn btn-secondary">Logout</button>
           </div>
         </div>

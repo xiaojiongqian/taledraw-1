@@ -207,6 +207,24 @@ body {
   color: var(--gray-color);
 }
 
+/* Checkout按钮在header中的样式 */
+.checkout-btn-header {
+  margin-right: 0.5rem;
+}
+
+.checkout-btn-header .checkout-button {
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  background: #8b5cf6;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.checkout-btn-header .checkout-button:hover {
+  background: #7c3aed;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
 .logout-button {
   padding: 0.5rem 1rem;
   background: var(--neutral-button-bg);
@@ -334,6 +352,8 @@ body {
   margin: 0 auto;
   padding: 2rem;
   width: 100%;
+  position: relative;
+  z-index: 1; /* 确保不会覆盖模态框 */
 }
 
   .story-input-section {
@@ -1120,4 +1140,16 @@ body {
     font-size: 0.9rem;
     line-height: 1.4;
   }
+}
+
+/* 确保支付相关元素始终显示在最上层 */
+.checkout-form-modal,
+.payment-success-page {
+  isolation: isolate; /* 创建新的层叠上下文 */
+  z-index: 999999 !important; /* 极高的z-index值 */
+}
+
+/* 支付处理过程中禁止页面滚动 */
+body.payment-processing {
+  overflow: hidden;
 }

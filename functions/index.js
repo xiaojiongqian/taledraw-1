@@ -5,6 +5,7 @@ const { GoogleAuth } = require('google-auth-library');
 const zlib = require('zlib');
 const cors = require('cors')({origin: true});
 const sharp = require('sharp');
+const Stripe = require('stripe'); // Stripe SDK
 
 // 导入集中配置
 const {
@@ -13,6 +14,7 @@ const {
   STORAGE_MODE,
   API_CONFIG,
   STORAGE_CONFIG,
+  STRIPE_CONFIG,
   PROMPTS,
   UTILS
 } = require('./config');
@@ -401,6 +403,145 @@ async function compressImageToWebP(base64Data) {
     throw new Error(`Failed to convert image to WebP: ${error.message}`);
   }
 }
+
+// Stripe结账会话创建函数 (Callable API)
+exports.createCheckoutSession = onCall({
+  region: LOCATION
+}, async (request) => {
+  console.log('createCheckoutSession 被调用');
+  console.log('认证信息:', request.auth ? '已认证' : '未认证');
+  
+  // 验证用户认证
+  if (!request.auth) {
+    console.error('用户未登录，拒绝访问');
+    throw new HttpsError('unauthenticated', '用户必须登录');
+  }
+
+  const userId = request.auth.uid;
+  console.log('已认证用户:', userId, request.auth.token.email);
+  
+  try {
+    // 获取请求参数
+    const { 
+      priceId = STRIPE_CONFIG.PRICE_ID, 
+      embeddedMode = false,
+      successUrl,
+      cancelUrl
+    } = request.data;
+    console.log('请求参数:', { priceId, embeddedMode, successUrl, cancelUrl });
+    
+    // 初始化Stripe
+    const stripeClient = new Stripe(STRIPE_CONFIG.SECRET_KEY);
+    console.log('Stripe已初始化');
+    
+    // 创建结账会话
+    const sessionParams = {
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      client_reference_id: userId, // 用于关联用户
+      metadata: {
+        userId: userId
+      }
+    };
+    
+    if (embeddedMode) {
+      // 嵌入式结账模式
+      sessionParams.ui_mode = 'embedded';
+      // 使用请求中的 successUrl 或默认配置
+      sessionParams.return_url = successUrl || STRIPE_CONFIG.SUCCESS_URL;
+    } else {
+      // 传统重定向模式
+      // 使用请求中的 URL 或默认配置
+      sessionParams.success_url = successUrl || STRIPE_CONFIG.SUCCESS_URL;
+      sessionParams.cancel_url = cancelUrl || STRIPE_CONFIG.CANCEL_URL;
+    }
+    
+    console.log('准备创建Stripe结账会话:', sessionParams);
+    const session = await stripeClient.checkout.sessions.create(sessionParams);
+    console.log('Stripe结账会话创建成功:', session.id);
+    
+    // 根据模式返回不同的响应
+    if (embeddedMode) {
+      return { 
+        clientSecret: session.client_secret,
+        sessionId: session.id
+      };
+    } else {
+      return { sessionId: session.id };
+    }
+  } catch (error) {
+    console.error('创建结账会话失败:', error);
+    console.error('错误详情:', error.code, error.message);
+    throw new HttpsError('internal', `创建结账会话失败: ${error.message}`);
+  }
+});
+
+// Stripe Webhook处理函数
+exports.stripeWebhook = onRequest({
+  region: LOCATION
+}, async (req, res) => {
+  const signature = req.headers['stripe-signature'];
+  const endpointSecret = STRIPE_CONFIG.WEBHOOK_SECRET;
+
+  try {
+    // 初始化Stripe
+    const stripeClient = new Stripe(STRIPE_CONFIG.SECRET_KEY);
+    
+    // 验证Webhook签名
+    let event;
+    try {
+      event = stripeClient.webhooks.constructEvent(
+        req.rawBody,
+        signature,
+        endpointSecret
+      );
+    } catch (err) {
+      console.error('Webhook签名验证失败:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // 处理事件
+    switch (event.type) {
+      case 'checkout.session.completed':
+        const session = event.data.object;
+        const userId = session.client_reference_id || session.metadata.userId;
+        
+        if (userId) {
+          // 更新用户订阅状态
+          await admin.firestore().collection('users').doc(userId).set({
+            subscriptionStatus: 'active',
+            subscriptionId: session.subscription,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          
+          console.log(`用户 ${userId} 订阅已激活`);
+        }
+        break;
+        
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted':
+        const subscription = event.data.object;
+        // 处理订阅更新或取消
+        // 这里需要查询用户ID并更新状态
+        break;
+        
+      default:
+        console.log(`未处理的事件类型: ${event.type}`);
+    }
+
+    // 返回成功响应
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('处理Stripe Webhook失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Imagen API调用函数
 exports.generateImage = onCall({
@@ -1112,10 +1253,12 @@ async function callGeminiStream(accessToken, story, pageCount, response, userId)
         const taleId = admin.firestore().collection('tmp').doc().id;
         await saveDataStreamWise(userId, taleId, taleData);
 
+        // 直接在complete事件中返回完整的故事数据，避免客户端再次调用getTaleData
         response.write(`data: ${JSON.stringify({ 
           type: 'complete', 
           taleId: taleId,
-          message: 'Story generation completed successfully!' 
+          message: 'Story generation completed successfully!',
+          taleData: taleData
         })}\n\n`);
 
         response.end();
