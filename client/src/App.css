@@ -213,7 +213,7 @@ body {
 }
 
 .checkout-btn-header .checkout-button {
-  padding: 6px 12px;
+  padding: 0.5rem 1rem;
   font-size: 0.9rem;
   background: #8b5cf6;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
@@ -221,8 +221,6 @@ body {
 
 .checkout-btn-header .checkout-button:hover {
   background: #7c3aed;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .logout-button {

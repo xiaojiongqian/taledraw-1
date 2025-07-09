@@ -55,7 +55,7 @@ const CheckoutButton = ({ className, onSuccess }) => {
           onClick={handleCheckout}
           disabled={loading}
         >
-          {loading ? '处理中...' : '升级账户'}
+          {loading ? 'loading...' : 'Upgrade'}
         </button>
         {error && <div className="checkout-error">{error}</div>}
       </div>
