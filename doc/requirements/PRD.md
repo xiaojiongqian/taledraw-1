@@ -45,7 +45,13 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 ### 5. 导出与保存 ✅
 - **多格式导出**：
   - HTML：完整网页格式，支持图片Base64嵌入，完全离线查看
-  - PPTX：PowerPoint演示文稿格式
+  - PPTX：PowerPoint演示文稿格式，16:9 1080p标准尺寸
+    - 实际图片比例检测：自动检测每张图片的真实长宽比
+    - 智能图文布局：根据实际图片比例自动调整排版
+    - 优化文字排版：增大字体、改善边距、顶部对齐
+    - 自适应字体：根据文字长度动态调整字体大小
+    - 专业设计：封面页、标题栏、合理边距
+    - 图片保护：保持原始长宽比，无拉伸裁剪
 - **云存储**：Firebase Storage 自动保存生成的图像
 - **数据持久化**：支持 Cloud Storage 和 Firestore 两种存储模式
 - **状态恢复**：页面刷新后自动恢复绘本状态（24小时有效期）
@@ -75,8 +81,6 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 ├── getTaleData (获取故事数据)
 ├── generateImage (Imagen 3图像生成)
 ├── generateImageV4 (Imagen 4图像生成)
-├── extractCharacter (角色信息提取)
-├── generateCharacterAvatar (角色头像生成)
 ├── config.js (统一配置管理)
 └── healthCheck (健康检查)
 ```
@@ -144,8 +148,8 @@ Cloud Storage/Firestore → 前端展示 → Imagen生成 → Firebase Storage �
 - ❌ 高级编辑
 
 ## 版本信息
-- **当前版本**：v0.3.4
-- **最新更新**：HTML导出功能完整修复，支持图片Base64嵌入和离线查看
+- **当前版本**：v0.3.8.2
+- **最新更新**：PPTX导出功能重大修复，图片长宽比精确保护，移除sizing配置，使用数学计算确保原图比例不变形
 - **支持的AI模型**：
   - Gemini 2.5-flash (故事分析)
   - Imagen 3.0-generate-002 (图像生成)

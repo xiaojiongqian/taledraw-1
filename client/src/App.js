@@ -838,13 +838,18 @@ function App() {
     }
     
     const startTime = Date.now();
-    addLog('Preparing PPTX file download...', 'info');
-    setShowSaveOptions(false);
-    setShowDebugWindow(true);
+          addLog('Preparing PPTX file download...', 'info');
+      addLog(`User selected aspect ratio: ${aspectRatio} (actual image ratios will be detected individually)`, 'info');
+      setShowSaveOptions(false);
+      setShowDebugWindow(true);
 
     try {
       let pptx = new PptxGenJS();
       pptx.title = storyTitle || 'My Story Book';
+      
+      // 设置16:9的1080p页面尺寸（以英寸为单位）
+      pptx.defineLayout({ name: 'CUSTOM_1080P', width: 13.33, height: 7.5 });
+      pptx.layout = 'CUSTOM_1080P';
 
       // 获取PNG图片数据函数 - 使用通用函数简化代码
       const getImagePngBlob = async (imageUrl, pageIndex) => {
@@ -856,12 +861,92 @@ function App() {
         });
       };
 
+      // 检测图片实际长宽比
+      const detectImageAspectRatio = (imageUrl) => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          
+          const timeout = setTimeout(() => {
+            addLog(`Image aspect ratio detection timeout, using default vertical layout`, 'warning');
+            resolve({ isVertical: true, actualRatio: 1.0 });
+          }, 5000);
+          
+          img.onload = () => {
+            clearTimeout(timeout);
+            const width = img.naturalWidth;
+            const height = img.naturalHeight;
+            const ratio = width / height;
+            
+            // 判断图片是否为竖版（高度大于或等于宽度）
+            const isVertical = ratio <= 1.2; // 1.2是一个容错值，避免轻微的横版图片被误判
+            
+            addLog(`Image detected: ${width}x${height} (ratio: ${ratio.toFixed(2)}, ${isVertical ? 'vertical' : 'horizontal'})`, 'info');
+            resolve({ isVertical, actualRatio: ratio });
+          };
+          
+          img.onerror = (error) => {
+            clearTimeout(timeout);
+            addLog(`Unable to detect aspect ratio for image (error: ${error.message || 'unknown'}), using default vertical layout`, 'warning');
+            resolve({ isVertical: true, actualRatio: 1.0 });
+          };
+          
+          img.src = imageUrl;
+        });
+      };
+
+
+
+      // 根据文字长度计算合适的字体大小
+      const calculateFontSize = (text, baseSize = 16) => {
+        if (!text) return baseSize;
+        const length = text.length;
+        if (length < 100) return baseSize;
+        if (length < 200) return Math.max(baseSize - 1, 12);
+        if (length < 400) return Math.max(baseSize - 2, 11);
+        return Math.max(baseSize - 3, 10);
+      };
+
+      // 第一页：绘本题目，居中放置
+      addLog('Creating title page...', 'info');
+      let titleSlide = pptx.addSlide();
+      titleSlide.addText(storyTitle || 'My Story Book', { 
+        x: '10%', 
+        y: '35%', 
+        w: '80%', 
+        h: '30%', 
+        fontSize: 32, 
+        bold: true, 
+        align: 'center',
+        valign: 'middle',
+        color: '333333'
+      });
+
       // 处理每个页面
       for (const [index, page] of pages.entries()) {
-        addLog(`Processing page ${index + 1}...`, 'info');
+        addLog(`Processing page ${index + 1}/${pages.length}...`, 'info');
         let slide = pptx.addSlide();
-        slide.addText(storyTitle || 'My Story Book', { x: 0.5, y: 0.25, w: '90%', h: 0.5, fontSize: 18, bold: true });
-        slide.addText(page.title || `Page ${index + 1}`, { x: 0.5, y: 0.8, w: '90%', h: 0.4, fontSize: 14 });
+        
+        // 页面标题高度占1/10
+        const titleHeight = 0.75; // 英寸
+        const titleY = 0.3; // 英寸
+        
+        // 添加页面标题
+        slide.addText(page.title || `Page ${index + 1}`, { 
+          x: '5%', 
+          y: titleY, 
+          w: '90%', 
+          h: titleHeight, 
+          fontSize: 18, 
+          bold: true, 
+          align: 'left',
+          valign: 'middle',
+          color: '444444'
+        });
+        
+        // 计算内容区域（减去标题高度）
+        const contentStartY = titleY + titleHeight + 0.2; // 标题下方0.2英寸间距
+        const contentHeight = 7.5 - contentStartY - 0.3; // 页面高度减去标题和底部边距
         
         if (page.image && page.status === 'success') {
           try {
@@ -875,24 +960,156 @@ function App() {
                 reader.readAsDataURL(imageData.blob);
               });
               
-              slide.addImage({ 
-                data: dataURL,
-                x: '10%', 
-                y: '25%', 
-                w: '80%', 
-                h: '45%',
-                sizing: { type: 'contain' }
-              });
-              addLog(`Added image for page ${index + 1}`, 'info');
+              // 检测实际图片长宽比
+              const aspectRatioInfo = await detectImageAspectRatio(page.image);
+              const { isVertical: actualIsVertical, actualRatio } = aspectRatioInfo;
+              
+              let imageConfig;
+              let textConfig;
+              let finalImageWidth, finalImageHeight; // 声明在更高的作用域
+              
+              if (actualIsVertical) {
+                // 竖版图片：左边文字，右边图片，图片高度对齐
+                const textWidth = 4.0; // 英寸，为更大图片预留空间
+                const maxImageWidth = 9.0; // 英寸，进一步增加图片最大宽度
+                const maxImageHeight = contentHeight; // 可用高度
+                
+                // 根据实际比例计算图片尺寸，保持长宽比
+                if (actualRatio <= maxImageWidth / maxImageHeight) {
+                  // 以高度为准
+                  finalImageHeight = maxImageHeight;
+                  finalImageWidth = finalImageHeight * actualRatio;
+                } else {
+                  // 以宽度为准
+                  finalImageWidth = maxImageWidth;
+                  finalImageHeight = finalImageWidth / actualRatio;
+                }
+                
+                const imageX = 13.33 - finalImageWidth; // 右边缘贴着页面边
+                
+                // 计算文字框在空白区域的居中位置
+                const availableSpace = imageX - 0.5; // 可用空间
+                const textX = 0.5 + (availableSpace - textWidth) / 2; // 居中位置
+                
+                // 文字配置（左侧）
+                textConfig = {
+                  x: textX, // 文字框在空白区域居中
+                  y: contentStartY + 0.2, // 稍微向下偏移
+                  w: textWidth,
+                  h: contentHeight - 0.4, // 减少高度，避免过大的上下空间
+                  fontSize: calculateFontSize(page.text, 20), // 增加基础字体大小
+                  align: 'left', // 文字内容左对齐
+                  valign: 'middle', // 垂直居中对齐
+                  margin: 0.3,
+                  color: '333333'
+                };
+                
+                // 图片配置（右侧，保持宽高比）
+                imageConfig = {
+                  data: dataURL,
+                  x: imageX,
+                  y: contentStartY + maxImageHeight - finalImageHeight, // 底部对齐
+                  w: finalImageWidth,
+                  h: finalImageHeight
+                };
+              } else {
+                // 横版图片：左边文字，右边图片，图片宽度86%，右下角贴边
+                const pageWidth = 13.33;
+                const maxImageWidth = pageWidth * 0.86; // 86%宽度，为文字留出空间
+                const maxImageHeight = contentHeight; // 可用高度
+                const textWidth = pageWidth * 0.12; // 12%宽度给文字，保持可读性
+                
+                // 根据实际比例计算图片尺寸，保持长宽比
+                if (actualRatio >= maxImageWidth / maxImageHeight) {
+                  // 以宽度为准
+                  finalImageWidth = maxImageWidth;
+                  finalImageHeight = finalImageWidth / actualRatio;
+                } else {
+                  // 以高度为准
+                  finalImageHeight = maxImageHeight;
+                  finalImageWidth = finalImageHeight * actualRatio;
+                }
+                
+                const imageX = pageWidth - finalImageWidth; // 右边缘贴着页面边
+                
+                // 计算文字框在空白区域的居中位置
+                const availableSpace = imageX - 0.5; // 可用空间
+                const textX = 0.5 + (availableSpace - textWidth) / 2; // 居中位置
+                
+                // 文字配置（左侧）
+                textConfig = {
+                  x: textX, // 文字框在空白区域居中
+                  y: contentStartY + 0.2, // 稍微向下偏移
+                  w: textWidth,
+                  h: contentHeight - 0.4, // 减少高度，避免过大的上下空间
+                  fontSize: calculateFontSize(page.text, 20), // 增加基础字体大小
+                  align: 'left', // 文字内容左对齐
+                  valign: 'middle', // 垂直居中对齐
+                  margin: 0.3,
+                  color: '333333'
+                };
+                
+                // 图片配置（右侧，底部对齐）
+                imageConfig = {
+                  data: dataURL,
+                  x: imageX,
+                  y: contentStartY + maxImageHeight - finalImageHeight, // 底部对齐
+                  w: finalImageWidth,
+                  h: finalImageHeight
+                };
+              }
+              
+              // 添加图片
+              slide.addImage(imageConfig);
+              
+              // 添加文字（居中放置，合理边距）
+              slide.addText(page.text || '', textConfig);
+              
+              addLog(`Added image and text for page ${index + 1} (${actualIsVertical ? 'vertical' : 'horizontal'} layout, ratio: ${actualRatio.toFixed(2)}, size: ${finalImageWidth.toFixed(1)}x${finalImageHeight.toFixed(1)}, text: ${(page.text || '').length} chars, font: ${textConfig.fontSize}pt)`, 'info');
             } else {
               addLog(`Unable to load image for page ${index + 1}`, 'warning');
+              // 如果没有图片，文字占全宽
+              slide.addText(page.text || '', { 
+                x: '8%', 
+                y: contentStartY + 0.2, 
+                w: '80%', 
+                h: contentHeight - 0.4, 
+                fontSize: calculateFontSize(page.text, 20), // 增加基础字体大小
+                align: 'left', // 文字内容左对齐
+                valign: 'middle', // 垂直居中对齐
+                margin: 0.4,
+                color: '333333'
+              });
             }
           } catch (error) {
             addLog(`Unable to add image for page ${index + 1}: ${error.message}`, 'warning');
+            // 如果图片处理失败，只显示文字
+            slide.addText(page.text || '', { 
+              x: '8%', 
+              y: contentStartY + 0.2, 
+              w: '80%', 
+              h: contentHeight - 0.4, 
+              fontSize: calculateFontSize(page.text, 20), // 增加基础字体大小
+              align: 'left', // 文字内容左对齐
+              valign: 'middle', // 垂直居中对齐
+              margin: 0.4,
+              color: '333333'
+            });
           }
+        } else {
+                        // 如果没有图片，文字占全宽
+              slide.addText(page.text || '', { 
+                x: '8%', 
+                y: contentStartY + 0.2, 
+                w: '80%', 
+                h: contentHeight - 0.4, 
+                fontSize: calculateFontSize(page.text, 20), // 增加基础字体大小
+                align: 'left', // 文字内容左对齐
+                valign: 'middle', // 垂直居中对齐
+                margin: 0.4,
+                color: '333333'
+              });
         }
-
-        slide.addText(page.text, { x: '10%', y: '75%', w: '80%', h: '20%', fontSize: 12, align: 'left' });
       }
 
       const fileName = generateSafeFileName(storyTitle, 'pptx');
@@ -906,7 +1123,8 @@ function App() {
             .then(generatedFileName => {
               const endTime = Date.now();
               const processingTime = ((endTime - startTime) / 1000).toFixed(1);
-              addLog(`PPTX file download initiated! (${processingTime}s)`, 'success');
+              const totalPages = pages.length + 1; // +1 for title page
+              addLog(`PPTX file download initiated! (${totalPages} pages, ${processingTime}s, 16:9 1080p format)`, 'success');
               resolve(generatedFileName);
             })
             .catch(err => {
@@ -1357,7 +1575,6 @@ function App() {
       <div className="App">
         <header className="App-header">
           <h1>📚 AI story book generator</h1>
-          <p>Generate beautiful illustrated storybooks for your stories using AI technology</p>
         </header>
         <main className="auth-container">
           <div className="auth-form">
@@ -1381,10 +1598,6 @@ function App() {
         </header>
         <main className="auth-container">
           <div className="auth-form">
-            <div className="auth-welcome">
-              <p className="auth-description">Generate beautiful illustrated storybooks for your stories using AI technology</p>
-            </div>
-            
             <div className="auth-tabs">
               <button 
                 className={authMode === 'login' ? 'active' : ''}
@@ -1450,7 +1663,6 @@ function App() {
       
       <main className="main-content">
         <div className="story-input-section">
-          <h2>Enter your story</h2>
           <div className="story-input">
             <textarea
               value={story}
