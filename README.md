@@ -239,8 +239,8 @@ npm test -- --coverage
 
 ### 2. 技术实现
 - **Firebase Functions后端**：
-  - 保持现有Imagen 3相关函数（如`generateImage`、`generateImageBatch`）不变，继续服务Imagen 3。
-  - 新增Imagen 4专用函数组（如`generateImageV4`、`generateImageBatchV4`），API路径带`V4`后缀。
+  - 保持现有Imagen 3相关函数（如`generateImage`）不变，继续服务Imagen 3。
+- 新增Imagen 4专用函数组（如`generateImageV4`），API路径带`V4`后缀。
   - Imagen 4函数组核心参数：
     - `location` 固定为`us-central1`
     - `model`为`imagen-4.0-generate-preview-06-06`

@@ -845,7 +845,8 @@ const PageItem = ({
         </div>
       )}
       
-      {(page.sceneType || (page.sceneCharacters && page.sceneCharacters.length > 0)) && (
+      {/* 只在开发环境显示Scene和Characters详情 */}
+      {process.env.NODE_ENV === 'development' && (page.sceneType || (page.sceneCharacters && page.sceneCharacters.length > 0)) && (
         <div className="details-section">
           <div 
             className="details-header" 
@@ -873,12 +874,28 @@ const PageItem = ({
                 <div className="character-details">
                   <strong style={{ display: 'block', marginBottom: '8px', color: '#333' }}>Character Details:</strong>
                   {page.sceneCharacters.map(characterName => {
-                    const character = allCharacters[characterName];
+                    // 尝试精确匹配和模糊匹配
+                    let character = allCharacters[characterName];
+                    
+                    // 如果精确匹配失败，尝试模糊匹配
+                    if (!character) {
+                      const availableNames = Object.keys(allCharacters);
+                      const fuzzyMatch = availableNames.find(name => 
+                        name.includes(characterName) || 
+                        characterName.includes(name) ||
+                        name.toLowerCase().includes(characterName.toLowerCase()) ||
+                        characterName.toLowerCase().includes(name.toLowerCase())
+                      );
+                      if (fuzzyMatch) {
+                        character = allCharacters[fuzzyMatch];
+                      }
+                    }
+                    
                     if (!character) {
                       return (
-                        <div key={characterName} style={{ marginBottom: '8px' }}>
-                          <p style={{ margin: 0, fontWeight: 'bold', color: '#555' }}>{characterName}</p>
-                          <p style={{ margin: 0, fontSize: '0.9em', color: '#888' }}>Detailed description not found.</p>
+                        <div key={characterName} style={{ marginBottom: '12px', padding: '8px', background: '#f9f9f9', border: '1px solid #ddd', borderRadius: '4px' }}>
+                          <h4 style={{ margin: '0 0 8px 0', color: '#666' }}>{characterName}</h4>
+                          <div style={{ fontSize: '0.9em', color: '#999' }}>Character details not available</div>
                         </div>
                       );
                     }

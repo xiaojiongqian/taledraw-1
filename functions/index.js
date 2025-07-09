@@ -603,7 +603,7 @@ exports.generateImage = onCall({
         if (response.status === 400) {
           errorMessage += ' - Invalid request parameters';
           if (isPersonGenerationError) {
-            errorMessage += ' (人物生成权限不足，请联系管理员申请权限或调整提示词)';
+            errorMessage += ' (Insufficient person generation permissions, please contact administrator for permission or adjust prompts)';
           }
         } else if (response.status === 401) {
           errorMessage += ' - Authentication failed';
@@ -655,19 +655,51 @@ exports.generateImage = onCall({
         throw new Error(`Imagen API error: ${JSON.stringify(data.error)}`);
       }
 
-      if (!data.predictions || !data.predictions[0]) {
-        console.error('[generateImage] Invalid Imagen API response structure:', data);
-        throw new Error('Invalid response structure from Imagen API - no predictions');
+      // 兼容新旧API响应格式
+      let imageData = null;
+      
+      // 新格式：可能直接在data中包含图像数据
+      if (data.bytesBase64Encoded) {
+        console.log('Found image data in new format (direct bytesBase64Encoded)');
+        imageData = data.bytesBase64Encoded;
       }
-
-      const prediction = data.predictions[0];
-      if (!prediction.bytesBase64Encoded) {
-        console.error('[generateImage] No image data in prediction:', Object.keys(prediction));
-        throw new Error('No image data in Imagen API response');
+      // 检查是否有candidates字段（类似GenerateContentResponse格式）
+      else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+        console.log('Found image data in candidates format');
+        const candidate = data.candidates[0];
+        if (candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].inlineData) {
+          imageData = candidate.content.parts[0].inlineData.data;
+        }
+      }
+      // 旧格式：predictions字段
+      else if (data.predictions && data.predictions[0]) {
+        console.log('Found image data in legacy predictions format');
+        const prediction = data.predictions[0];
+        if (prediction.bytesBase64Encoded) {
+          imageData = prediction.bytesBase64Encoded;
+        }
+      }
+      // 检查其他可能的响应格式
+      else if (data.images && data.images[0]) {
+        console.log('Found image data in images array format');
+        imageData = data.images[0].bytesBase64Encoded || data.images[0].data;
+      }
+      
+      if (!imageData) {
+        console.error('[generateImage] No image data found in response. Response structure:', {
+          keys: Object.keys(data),
+          hasError: !!data.error,
+          hasPredictions: !!data.predictions,
+          hasCandidates: !!data.candidates,
+          hasImages: !!data.images,
+          hasBytesBase64Encoded: !!data.bytesBase64Encoded,
+          fullResponse: JSON.stringify(data, null, 2)
+        });
+        throw new Error('No image data found in Imagen API response. Response format may have changed.');
       }
 
       console.log('Successfully received image data from Imagen API');
-      return prediction.bytesBase64Encoded;
+      return imageData;
 
     } catch (error) {
       console.error('[generateImage] Error in callImagenAPI:', error);
@@ -744,64 +776,7 @@ exports.generateImage = onCall({
   }
 });
 
-// 批量生成图像函数（可选）
-exports.generateImageBatch = onCall({
-  memory: '374MB', // 优化：从2GB大幅减少到374MB (基于6.07%利用率 + 安全边际)
-  timeoutSeconds: 900 // 15 minutes for v2 functions
-}, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'User must be authenticated');
-  }
 
-  const { prompts } = request.data;
-
-  if (!prompts || !Array.isArray(prompts)) {
-    throw new HttpsError('invalid-argument', 'Prompts array is required');
-  }
-
-  try {
-    const results = [];
-    
-    // 串行处理，避免并发限制
-    for (let i = 0; i < prompts.length; i++) {
-      try {
-        // 直接调用生成图像逻辑
-        const imageRequest = {
-          auth: request.auth,
-          data: {
-            prompt: prompts[i],
-            pageIndex: i
-            // 移除seed参数，因为启用水印时不支持seed
-          }
-        };
-        const result = await exports.generateImage(imageRequest);
-        
-        results.push({
-          pageIndex: i,
-          success: true,
-          imageUrl: result.imageUrl
-        });
-      } catch (error) {
-        console.error(`Failed to generate image for page ${i + 1}:`, error);
-        results.push({
-          pageIndex: i,
-          success: false,
-          error: error.message
-        });
-      }
-    }
-
-    return {
-      results: results,
-      totalPages: prompts.length,
-      successCount: results.filter(r => r.success).length
-    };
-
-  } catch (error) {
-    console.error('Error in batch generation:', error);
-    throw new HttpsError('internal', `Batch generation failed: ${error.message}`);
-  }
-});
 
 // 健康检查函数
 exports.healthCheck = onCall({
@@ -816,11 +791,8 @@ exports.healthCheck = onCall({
     functions: [
       'generateImage',
       'generateImageV4', 
-      'generateImageBatch',
-      'generateImageBatchV4',
       'generateTaleStream',
       'getTaleData',
-      'extractCharacter',
       'healthCheck'
     ]
   };
@@ -858,113 +830,6 @@ exports.getTaleData = onCall({
 });
 
 // 注意：原 generateStoryPages 函数已移除，现在直接使用优化的 generateTale 函数
-
-// 角色提取函数
-exports.extractCharacter = onCall({
-  memory: '256MB',
-  timeoutSeconds: 120
-}, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'User must be authenticated');
-  }
-
-  const { story } = request.data;
-
-  if (!story || !story.trim()) {
-    throw new HttpsError('invalid-argument', 'Story content is required');
-  }
-
-  try {
-    console.log('Extracting character from story...');
-
-    // 获取访问令牌 (复用全局auth实例)
-    const client = await auth.getClient();
-    const accessToken = (await client.getAccessToken()).token;
-
-    // 使用配置文件中的角色提取提示词
-    const geminiResponse = await callGemini(accessToken, PROMPTS.CHARACTER_EXTRACTION, story);
-    const characterData = JSON.parse(geminiResponse);
-    
-    // 按照测试期望格式返回
-    const character = {
-      name: characterData.name || '主角',
-      description: characterData.description || '故事中的主要角色'
-    };
-    
-    return {
-      success: true,
-      characters: [character] // 返回数组格式以符合测试期望
-    };
-
-  } catch (error) {
-    console.error('Error extracting character:', error);
-    throw new HttpsError('internal', `Character extraction failed: ${error.message}`);
-  }
-});
-
-// The one and only function to call Gemini
-async function callGemini(accessToken, systemPrompt, story) {
-  const model = API_CONFIG.GEMINI_MODEL;
-  const apiUrl = UTILS.buildApiUrl(model);
-  
-  console.log(`Preparing Gemini API request for model: ${model}`);
-  console.log(`Story length: ${story.length} characters`);
-  console.log(`System prompt length: ${systemPrompt.length} characters`);
-
-  const requestBody = UTILS.buildGeminiRequest(story, systemPrompt);
-
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json; charset=utf-8',
-      'Accept': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Gemini API call failed with status ${response.status}:`, errorText);
-    throw new Error(`Gemini API failed with status ${response.status}`);
-  }
-
-  const data = await response.json();
-  console.log('Full Gemini API response:', JSON.stringify(data, null, 2));
-  
-  // Check for safety filter blocks or other issues
-  if (data.candidates && data.candidates.length > 0) {
-    const candidate = data.candidates[0];
-    console.log('First candidate:', JSON.stringify(candidate, null, 2));
-    
-    // Check if content was blocked by safety filters
-    if (candidate.finishReason === 'SAFETY') {
-      console.error('Content blocked by safety filters:', candidate.safetyRatings);
-      throw new Error('Content was blocked by Gemini safety filters. Please try a different story.');
-    }
-    
-    // Check if content was blocked for other reasons
-    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
-      console.error('Content generation stopped with reason:', candidate.finishReason);
-      throw new Error(`Content generation stopped: ${candidate.finishReason}`);
-    }
-  }
-  
-  const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!generatedText) {
-    console.error('Invalid or empty response structure from Gemini API:', JSON.stringify(data, null, 2));
-    console.error('Candidates array:', data.candidates);
-    console.error('Content path:', data.candidates?.[0]?.content);
-    console.error('Parts path:', data.candidates?.[0]?.content?.parts);
-    throw new Error('Invalid or empty content from Gemini API.');
-  }
-  
-  // 确保返回的文本正确处理UTF-8编码
-  const cleanedText = generatedText.replace(/\uFFFD/g, '').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '');
-  return cleanedText;
-}
-
-
 
 // 流式Gemini调用函数
 async function callGeminiStream(accessToken, story, pageCount, response, userId) {
@@ -1336,16 +1201,51 @@ exports.generateImageV4 = onCall({
         throw new Error(`Imagen 4 API error: ${JSON.stringify(data.error)}`);
       }
 
-      if (!data.predictions || !data.predictions[0]) {
-        console.error('[generateImageV4] Invalid response structure from Imagen 4 API:', data);
-        throw new Error('Invalid response structure from Imagen 4 API - no predictions. Full response: ' + JSON.stringify(data));
+      // 兼容新旧API响应格式
+      let imageData = null;
+      
+      // 新格式：可能直接在data中包含图像数据
+      if (data.bytesBase64Encoded) {
+        console.log('[generateImageV4] Found image data in new format (direct bytesBase64Encoded)');
+        imageData = data.bytesBase64Encoded;
+      }
+      // 检查是否有candidates字段（类似GenerateContentResponse格式）
+      else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+        console.log('[generateImageV4] Found image data in candidates format');
+        const candidate = data.candidates[0];
+        if (candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].inlineData) {
+          imageData = candidate.content.parts[0].inlineData.data;
+        }
+      }
+      // 旧格式：predictions字段
+      else if (data.predictions && data.predictions[0]) {
+        console.log('[generateImageV4] Found image data in legacy predictions format');
+        const prediction = data.predictions[0];
+        if (prediction.bytesBase64Encoded) {
+          imageData = prediction.bytesBase64Encoded;
+        }
+      }
+      // 检查其他可能的响应格式
+      else if (data.images && data.images[0]) {
+        console.log('[generateImageV4] Found image data in images array format');
+        imageData = data.images[0].bytesBase64Encoded || data.images[0].data;
+      }
+      
+      if (!imageData) {
+        console.error('[generateImageV4] No image data found in response. Response structure:', {
+          keys: Object.keys(data),
+          hasError: !!data.error,
+          hasPredictions: !!data.predictions,
+          hasCandidates: !!data.candidates,
+          hasImages: !!data.images,
+          hasBytesBase64Encoded: !!data.bytesBase64Encoded,
+          fullResponse: JSON.stringify(data, null, 2)
+        });
+        throw new Error('No image data found in Imagen 4 API response. Response format may have changed.');
       }
 
-      const prediction = data.predictions[0];
-      if (!prediction.bytesBase64Encoded) {
-        throw new Error('No image data in Imagen 4 API response');
-      }
-      return prediction.bytesBase64Encoded;
+      console.log('[generateImageV4] Successfully received image data from Imagen 4 API');
+      return imageData;
     } catch (error) {
       console.error('[generateImageV4] Exception:', {
         prompt,
@@ -1415,37 +1315,7 @@ exports.generateImageV4 = onCall({
   }
 });
 
-exports.generateImageBatchV4 = onCall({
-  memory: '374MB', // 优化：从2GB大幅减少到374MB (基于批处理低内存使用特性 + 安全边际)
-  timeoutSeconds: 900
-}, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'User must be authenticated');
-  }
-  const { prompts } = request.data;
-  if (!prompts || !Array.isArray(prompts)) {
-    throw new HttpsError('invalid-argument', 'Prompts array is required');
-  }
 
-  try {
-    const results = [];
-    for (let i = 0; i < prompts.length; i++) {
-      try {
-        const imageRequest = {
-          auth: request.auth,
-          data: { ...prompts[i], pageIndex: i }
-        };
-        const result = await exports.generateImageV4(imageRequest);
-        results.push({ pageIndex: i, success: true, imageUrl: result.imageUrl });
-      } catch (error) {
-        results.push({ pageIndex: i, success: false, error: error.message });
-      }
-    }
-    return { results: results, totalPages: prompts.length, successCount: results.filter(r => r.success).length };
-  } catch (error) {
-    throw new HttpsError('internal', `Batch generation (Imagen 4) failed: ${error.message}`);
-  }
-});
 
 // 新增：流式故事生成函数
 exports.generateTaleStream = onRequest(

@@ -36,9 +36,11 @@ const CORS_CONFIG = {
 
 // === 共享提示词模板 ===
 const PROMPTS = {
-  // 故事生成系统提示词
+  // 故事生成系统提示词 --- important! 不要修改！！！
   STORY_GENERATION: (pageCount) => `
 You are a professional children's storybook editor and creative assistant. Your task is to transform a user-submitted story into a complete ${pageCount}-page illustrated storybook with consistent character design and child-friendly content.
+
+**CRITICAL ENGLISH REQUIREMENT**: ALL image generation prompts (imagePrompt, scenePrompt, characterPrompts) MUST be written in ENGLISH ONLY. This is absolutely mandatory for optimal image generation quality. Even if the input story is in another language, these specific fields must always be in English.
 
 **IMPORTANT**: Your response must be concise and stay within 30,000 tokens total. Keep descriptions focused and avoid unnecessary verbosity.
 
@@ -70,7 +72,7 @@ Transform any potentially problematic content using child-friendly alternatives:
 **Goal**: Maintain story essence while ensuring high image generation success rate
 
 ### STEP 4: PAGE DISTRIBUTION STRATEGY
-Distribute content across ${pageCount} pages ensuring:
+Distribute content across ${pageCount} pages:
 - Balanced content per page (avoid front-loaded or back-loaded distribution)
 - Complete story coverage (no important plot omissions)
 - No repetitive or filler content
@@ -115,21 +117,27 @@ Return a single valid JSON object with this exact structure:
       "text": "Page content in same language as input story, ensuring story completeness",
       "sceneType": "Brief setting description (e.g., 'enchanted forest', 'cozy kitchen')",
       "sceneCharacters": ["Character names present in this scene"],
-      "imagePrompt": "Detailed English prompt starting with the identified art style. Include specific character descriptions from character sheets for any characters present. Describe scene, actions, expressions, mood. End with: ', children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'",
-      "scenePrompt": "Scene/setting portion of the imagePrompt",
-      "characterPrompts": "Character description portion of the imagePrompt"
+      "imagePrompt": "**MUST BE IN ENGLISH** - Detailed English prompt starting with the identified art style. Include specific character descriptions from character sheets for any characters present. Describe scene, actions, expressions, mood. End with: ', children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions'",
+      "scenePrompt": "**MUST BE IN ENGLISH** - Scene/setting portion of the imagePrompt in English",
+      "characterPrompts": "**MUST BE IN ENGLISH** - Character description portion of the imagePrompt in English"
     }
   ]
 }
 
 ## CRITICAL REQUIREMENTS
 - Use the SAME LANGUAGE as the input story for all text content (title, page text)
-- Use ENGLISH for imagePrompt, scenePrompt, characterPrompts (for optimal image generation)
+- **ABSOLUTE REQUIREMENT**: Use ENGLISH ONLY for imagePrompt, scenePrompt, characterPrompts (for optimal image generation)
+- **NO EXCEPTIONS**: Even if input story is Chinese, Japanese, Spanish etc., imagePrompt/scenePrompt/characterPrompts must be 100% English
 - Include ALL story content across pages (no omissions)
 - Maintain character visual consistency through detailed character sheets
 - Apply content safety transformations while preserving story meaning
 - Ensure each page has unique, meaningful content (no filler or repetition)
 - **OUTPUT LENGTH CONSTRAINT**: Keep the total JSON output concise and within 30,000 tokens. Prioritize essential content over verbose descriptions. Each page text should be 2-4 sentences maximum. Image prompts should be detailed but concise (under 200 words each).
+
+## ENGLISH PROMPT EXAMPLES
+Good imagePrompt examples:
+- "Children's book watercolor illustration of a brave little girl with red hood walking through a peaceful enchanted forest with tall oak trees and colorful wildflowers, warm afternoon sunlight filtering through leaves, friendly woodland creatures watching from behind trees, children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions"
+- "Cartoon style digital art showing a wise grandmother with silver hair and kind blue eyes, wearing a cozy purple sweater and floral apron, standing in her warm cottage kitchen with wooden furniture and hanging herbs, gentle smile on her face, children's book illustration style, warm and friendly colors, safe and welcoming atmosphere, absolutely no text, no words, no letters, no signs, no symbols, no writing, no captions"
 
 ## EXAMPLE CHARACTER SHEET
 "Leo": {
@@ -138,35 +146,9 @@ Return a single valid JSON object with this exact structure:
   "personality": "Curious and adventurous, confident posture, tends to lean forward when interested, expressive hand gestures"
 }
 
+**FINAL REMINDER**: imagePrompt, scenePrompt, and characterPrompts fields MUST be written in English regardless of input language. This is non-negotiable for image generation quality.
+
 Analyze this story and transform it according to the above requirements:
-`,
-
-  // 角色提取提示词
-  CHARACTER_EXTRACTION: `
-You are a professional character analyst for children's storybooks. Your task is to extract and describe the main character from a story.
-
-Please analyze the story and identify the PRIMARY main character (the most important one). Return a JSON object with the following structure:
-
-{
-  "name": "Character's name (if mentioned) or 'Main Character' if not specified",
-  "description": "Detailed physical and personality description suitable for consistent image generation across multiple illustrations"
-}
-
-Requirements:
-- Focus on the MOST IMPORTANT character in the story
-- Include physical appearance details (age, build, hair, eyes, clothing style, etc.)
-- Include personality traits that affect visual representation
-- Use child-friendly, positive descriptions
-- Keep the description concise but comprehensive (2-3 sentences)
-- If multiple important characters exist, choose the protagonist/main character
-
-Example output:
-{
-  "name": "小明",
-  "description": "A curious 8-year-old boy with short black hair, bright brown eyes, wearing a blue school uniform and carrying a red backpack. He has an adventurous spirit and confident posture, often smiling with excitement when discovering new things."
-}
-
-Analyze this story and extract the main character:
 `
 };
 

@@ -61,14 +61,14 @@ npm install
 npm run build
 
 # 部署到Firebase Hosting
-firebase deploy --only hosting
+npx firebase deploy --only hosting
 ```
 
 ### 5. 配置存储规则
 
 ```bash
 # 部署Storage安全规则
-firebase deploy --only storage
+npx firebase deploy --only storage
 ```
 
 ## 🏗️ 架构配置
@@ -81,8 +81,7 @@ firebase deploy --only storage
 | `getTaleData` | Callable | 获取故事数据 | 256MB | 60s |
 | `generateImage` | Callable | Imagen 3图像生成 | 1GB | 300s |
 | `generateImageV4` | Callable | Imagen 4图像生成 | 1GB | 300s |
-| `generateImageBatch` | Callable | 批量图像生成 | 2GB | 900s |
-| `generateImageBatchV4` | Callable | Imagen 4批量生成 | 2GB | 900s |
+
 | `extractCharacter` | Callable | 角色信息提取 | 512MB | 120s |
 | `healthCheck` | Callable | 系统健康检查 | 128MB | 60s |
 

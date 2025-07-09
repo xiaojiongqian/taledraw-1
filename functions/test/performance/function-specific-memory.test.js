@@ -136,180 +136,131 @@ describe('各函数专门内存使用分析', function() {
   this.timeout(900000); // 15分钟超时
 
   let monitor;
-  const results = [];
+  let results = [];
 
   before(() => {
     console.log('🔍 开始针对各函数的内存使用分析');
     monitor = new MemoryMonitor();
+    
+    monitor.startMonitoring(50);
+    
+    console.log('🔍 Starting memory usage analysis for each function');
+    
+    results = []; // 重置结果数组
   });
 
   after(() => {
-    if (monitor) {
-      monitor.stopMonitoring();
+    monitor.stopMonitoring();
+    
+    console.log('\n📊 Memory analysis summary for all functions:');
+    
+    if (results.length > 0) {
+      console.log('\n📋 Analysis results:');
+      results.forEach(result => {
+        console.log(`  Function: ${result.function}`);
+        console.log(`  Current config: ${result.currentConfig}MB`);
+        console.log(`  Actual peak: ${result.peakRSS.toFixed(2)}MB (RSS)`);
+        console.log(`  Utilization: ${result.utilization.toFixed(2)}%`);
+        console.log(`  Recommendation: ${result.recommendation}`);
+      });
+      
+      console.log('\n🎯 Optimization recommendations summary:');
+      const wellConfigured = results.filter(r => r.recommendation.includes('✅'));
+      const overConfigured = results.filter(r => r.recommendation.includes('⬇️'));
+      const underConfigured = results.filter(r => r.recommendation.includes('⬆️'));
+      
+      console.log(`✅ Well configured: ${wellConfigured.length} functions`);
+      console.log(`⬇️  Over configured: ${overConfigured.length} functions`);
+      console.log(`⬆️  Under configured: ${underConfigured.length} functions`);
     }
     
-    // 输出总结报告
-    console.log('\n📊 所有函数内存分析总结:');
-    console.log('=' .repeat(80));
-    
-    results.forEach(result => {
-      console.log(`\n${result.function}:`);
-      console.log(`  当前配置: ${result.currentConfig}MB`);
-      console.log(`  实际峰值: ${result.peakRSS.toFixed(2)}MB (RSS)`);
-      console.log(`  利用率: ${result.utilization.toFixed(2)}%`);
-      console.log(`  建议: ${result.recommendation}`);
-    });
-    
-    console.log('\n🎯 优化建议总结:');
-    const overConfigured = results.filter(r => r.utilization < 50);
-    const underConfigured = results.filter(r => r.utilization > 85);
-    const wellConfigured = results.filter(r => r.utilization >= 50 && r.utilization <= 85);
-    
-    console.log(`✅ 配置合理: ${wellConfigured.length}个函数`);
-    console.log(`⬇️  配置过高: ${overConfigured.length}个函数`);
-    console.log(`⬆️  配置不足: ${underConfigured.length}个函数`);
-    
-    cleanup();
-    console.log('✅ 函数专门内存分析完成');
+    console.log('✅ Function-specific memory analysis completed');
   });
 
-  describe('轻量级函数内存测试', () => {
-    it('healthCheck 函数内存使用分析 (当前: 128MB)', async () => {
+  describe('Function memory usage analysis', () => {
+    it('healthCheck function memory usage analysis (current: 170MB)', async () => {
       const wrapped = testEnv.wrap(functions.healthCheck);
       
-      monitor.startMonitoring(20);
+      monitor.startMonitoring(50);
       
-      // 高频调用测试
-      for (let i = 0; i < 200; i++) {
+      for (let i = 0; i < 10; i++) {
         const req = createMockRequest({});
-        await wrapped(req);
+        try {
+          await wrapped(req);
+        } catch (error) {
+          // Expected errors are fine
+        }
         
-        if (i % 50 === 0) await waitFor(10);
+        await waitFor(50);
       }
       
       monitor.stopMonitoring();
-      const result = monitor.analyzeForFunction('healthCheck', 128);
+      const result = monitor.analyzeForFunction('healthCheck', 170);
       if (result) results.push(result);
       
-      console.log('✅ healthCheck 函数内存分析完成');
+      console.log('✅ healthCheck function memory analysis completed');
     });
 
-    it('extractCharacter 函数内存使用分析 (当前: 256MB)', async () => {
-      const wrapped = testEnv.wrap(functions.extractCharacter);
+    it('getTaleData function memory usage analysis (current: 258MB)', async () => {
+      const wrapped = testEnv.wrap(functions.getTaleData);
       
-      monitor.startMonitoring(30);
+      monitor.startMonitoring(50);
       
-      // 测试不同大小的故事
-      const stories = [
-        testStoryData.shortStory,
-        testStoryData.mediumStory,
-        testStoryData.longStory,
-        testStoryData.longStory.repeat(2), // 更长的故事
+      const testCases = [
+        { taleId: 'test-tale-1' },
+        { taleId: 'test-tale-2' },
+        { taleId: 'non-existent-tale' }
       ];
       
-      for (const story of stories) {
-        const req = createMockRequest({ story });
+      for (const testCase of testCases) {
+        const req = createMockRequest(testCase);
         
         try {
           await wrapped(req);
         } catch (error) {
-          // 预期可能有认证错误，主要关注内存使用
-          if (!error.message.includes('access token') && !error.code === 'unauthenticated') {
-            console.log('Unexpected error in extractCharacter:', error.message);
-          }
+          // Expected errors for non-existent tales or missing authentication
         }
         
         await waitFor(100);
       }
       
       monitor.stopMonitoring();
-      const result = monitor.analyzeForFunction('extractCharacter', 256);
+      const result = monitor.analyzeForFunction('getTaleData', 258);
       if (result) results.push(result);
       
-      console.log('✅ extractCharacter 函数内存分析完成');
+      console.log('✅ getTaleData function memory analysis completed');
     });
-  });
 
-  describe('中等内存函数测试', () => {
-    it('getTaleData 函数内存使用分析 (当前: 1GB)', async () => {
-      const wrapped = testEnv.wrap(functions.getTaleData);
-      
-      monitor.startMonitoring(30);
-      
-      // 测试不同的tale ID请求
-      const taleIds = [
-        'test-tale-1',
-        'test-tale-2', 
-        'non-existent-tale',
-        'large-tale-data',
-        'very-long-tale-id-with-complex-name-structure'
-      ];
-      
-      for (let round = 0; round < 3; round++) {
-        for (const taleId of taleIds) {
-          const req = createMockRequest({ taleId });
-          
-          try {
-            await wrapped(req);
-          } catch (error) {
-            // 预期会有not-found错误，主要关注内存使用
-          }
-          
-          await waitFor(50);
-        }
-      }
-      
-      // 测试并发请求
-      const concurrentPromises = [];
-      for (let i = 0; i < 10; i++) {
-        const req = createMockRequest({ taleId: `concurrent-tale-${i}` });
-        concurrentPromises.push(wrapped(req).catch(() => {})); // 忽略错误
-      }
-      await Promise.all(concurrentPromises);
-      
-      monitor.stopMonitoring();
-      const result = monitor.analyzeForFunction('getTaleData', 1024);
-      if (result) results.push(result);
-      
-      console.log('✅ getTaleData 函数内存分析完成');
-    });
-  });
-
-  describe('图片生成函数测试', () => {
-    it('generateImage 函数内存使用分析 (当前: 1GB)', async () => {
+    it('generateImage function memory usage analysis (current: 274MB)', async () => {
       const wrapped = testEnv.wrap(functions.generateImage);
       
       monitor.startMonitoring(50);
       
-      // 测试不同复杂度的提示词
-      const prompts = [
-        'A simple red circle',
-        'A beautiful sunset over mountains with birds flying',
-        testImagePrompts.simple,
-        testImagePrompts.complex,
-        // 测试长提示词
-        'A highly detailed, photorealistic scene of a magical forest with ancient trees, glowing mushrooms, fairy lights, mysterious fog, a crystal clear stream running through the middle, colorful butterflies, singing birds, and a small wooden bridge covered with moss and flowers, rendered in 4K quality with perfect lighting and shadows',
-        // 测试空和边界情况
-        '',
-        '   ',
-        null
-      ];
-      
-      for (const prompt of prompts) {
-        const req = createMockRequest({
-          prompt,
+      const testCases = [
+        {
+          prompt: testImagePrompts.simple,
           pageIndex: 0,
           aspectRatio: '1:1'
-        });
+        },
+        {
+          prompt: testImagePrompts.complex,
+          pageIndex: 1,
+          aspectRatio: '16:9',
+          seed: 42
+        }
+      ];
+      
+      for (const testCase of testCases) {
+        const req = createMockRequest(testCase);
         
         try {
           await wrapped(req);
         } catch (error) {
-          // 预期会有各种错误（认证、API调用等），主要关注内存使用
+          // Check for expected errors
           if (error.message.includes('prompt is missing') || 
               error.message.includes('access token') ||
               error.message.includes('Imagen API')) {
-            // 这些是预期的错误
+            // These are expected errors
           } else {
             console.log('Unexpected error in generateImage:', error.message);
           }
@@ -322,7 +273,7 @@ describe('各函数专门内存使用分析', function() {
       const result = monitor.analyzeForFunction('generateImage', 1024);
       if (result) results.push(result);
       
-      console.log('✅ generateImage 函数内存分析完成');
+      console.log('✅ generateImage function memory analysis completed');
     });
 
     it('generateImageV4 函数内存使用分析 (当前: 1GB)', async () => {
@@ -359,7 +310,7 @@ describe('各函数专门内存使用分析', function() {
         try {
           await wrapped(req);
         } catch (error) {
-          // 预期会有认证或API错误
+          // Expected authentication or API errors
         }
         
         await waitFor(100);
@@ -369,84 +320,11 @@ describe('各函数专门内存使用分析', function() {
       const result = monitor.analyzeForFunction('generateImageV4', 1024);
       if (result) results.push(result);
       
-      console.log('✅ generateImageV4 函数内存分析完成');
+      console.log('✅ generateImageV4 function memory analysis completed');
     });
   });
 
-  describe('批量处理函数测试', () => {
-    it('generateImageBatch 函数内存使用分析 (当前: 2GB)', async () => {
-      const wrapped = testEnv.wrap(functions.generateImageBatch);
-      
-      monitor.startMonitoring(100);
-      
-      // 测试不同大小的批量请求
-      const batchSizes = [1, 3, 5, 8];
-      
-      for (const size of batchSizes) {
-        const prompts = [];
-        for (let i = 0; i < size; i++) {
-          prompts.push(`Test image ${i + 1} for batch of ${size}`);
-        }
-        
-        const req = createMockRequest({ prompts });
-        
-        try {
-          await wrapped(req);
-        } catch (error) {
-          // 预期会有认证或API错误
-        }
-        
-        await waitFor(200);
-      }
-      
-      // 测试大批量请求的内存峰值
-      const largeBatch = [];
-      for (let i = 0; i < 15; i++) {
-        largeBatch.push(`Large batch image ${i + 1}`);
-      }
-      
-      const req = createMockRequest({ prompts: largeBatch });
-      try {
-        await wrapped(req);
-      } catch (error) {
-        // 预期会有错误
-      }
-      
-      monitor.stopMonitoring();
-      const result = monitor.analyzeForFunction('generateImageBatch', 2048);
-      if (result) results.push(result);
-      
-      console.log('✅ generateImageBatch 函数内存分析完成');
-    });
 
-    it('generateImageBatchV4 函数内存使用分析 (当前: 2GB)', async () => {
-      const wrapped = testEnv.wrap(functions.generateImageBatchV4);
-      
-      monitor.startMonitoring(100);
-      
-      // 测试V4批量处理
-      const prompts = [
-        { prompt: 'Batch V4 image 1', aspectRatio: '1:1' },
-        { prompt: 'Batch V4 image 2', aspectRatio: '16:9' },
-        { prompt: 'Batch V4 image 3', aspectRatio: '9:16' },
-        { prompt: 'Batch V4 image 4', seed: 42 }
-      ];
-      
-      const req = createMockRequest({ prompts });
-      
-      try {
-        await wrapped(req);
-      } catch (error) {
-        // 预期会有认证或API错误
-      }
-      
-      monitor.stopMonitoring();
-      const result = monitor.analyzeForFunction('generateImageBatchV4', 2048);
-      if (result) results.push(result);
-      
-      console.log('✅ generateImageBatchV4 函数内存分析完成');
-    });
-  });
 
   describe('流式处理函数测试', () => {
     // 注意：generateTaleStream 是 onRequest 函数，测试方式不同

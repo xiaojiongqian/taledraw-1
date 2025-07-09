@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { auth } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { generateTale, generateCharacterAvatar, generateImageWithImagen } from './api';
+import { generateTaleStream, generateImageWithImagen } from './api';
 import PageSelector from './components/PageSelector';
 import AspectRatioSelector from './components/AspectRatioSelector';
-import CharacterManager from './components/CharacterManager';
 import PageItem from './components/PageItem';
 import PptxGenJS from 'pptxgenjs';
 import stateManager from './stateManager';
@@ -22,14 +21,6 @@ function App() {
   const [aspectRatio, setAspectRatio] = useState('1:1'); // Default 1:1
   const [artStyle, setArtStyle] = useState('Children\'s picture book illustration style'); // Art style state
   const [allCharacters, setAllCharacters] = useState({}); // All characters info state
-  const [character, setCharacter] = useState({
-    name: '',
-    description: '',
-    referenceImage: null,
-    referenceImagePreview: null,
-    fidelity: 50,
-    isAutoExtracted: false
-  }); // Character state
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -162,16 +153,15 @@ function App() {
       setAspectRatio(savedState.aspectRatio || '1:1');
       setArtStyle(savedState.artStyle || '');
       setAllCharacters(savedState.allCharacters || {});
-      setCharacter(savedState.character || {
-        name: '',
-        description: '',
-        referenceImage: null,
-        referenceImagePreview: null,
-        fidelity: 50,
-        isAutoExtracted: false
-      });
       setStoryWordCount(savedState.storyWordCount || 0);
       setGeneratedResult(savedState.generatedResult || null);
+      
+      // Debug logging for allCharacters
+      console.log('🔍 Debug - Restoring allCharacters:', savedState.allCharacters);
+      console.log('🔍 Debug - allCharacters keys:', Object.keys(savedState.allCharacters || {}));
+      console.log('🔍 Debug - allCharacters count:', Object.keys(savedState.allCharacters || {}).length);
+      
+      addLog(`Restored character data: ${Object.keys(savedState.allCharacters || {}).length} characters found`, 'info');
 
       // Restore page state (keep images initially)
       const restoredPages = (savedState.pages || []).map((page, index) => ({
@@ -315,7 +305,6 @@ function App() {
         aspectRatio,
         artStyle,
         allCharacters,
-        character,
         pages,
         storyWordCount,
         generatedResult,
@@ -356,14 +345,6 @@ function App() {
       setStoryTitle(''); // 清空故事标题
       setPageCount(10); // 重置为默认值
       setAspectRatio('1:1'); // 重置为默认值
-      setCharacter({
-        name: '',
-        description: '',
-        referenceImage: null,
-        referenceImagePreview: null,
-        fidelity: 50,
-        isAutoExtracted: false
-      }); // Reset character state
       setLogs([]); // Clear logs
       setShowDebugWindow(false); // Hide debug window
       setHasRestoredState(false); // Reset restoration state flag
@@ -473,7 +454,7 @@ function App() {
     addLog('Starting story generation...', 'info');
 
     try {
-      const taleData = await generateTale(story, pageCount, aspectRatio, (progress) => {
+              const taleData = await generateTaleStream(story, pageCount, aspectRatio, (progress) => {
         if (progress.log) {
           // Use 'llm' type for LLM-related logs
           const logType = progress.step === 'connecting' || progress.step === 'analyzing' ? 'llm' : 'info';
@@ -686,14 +667,6 @@ function App() {
     setPages([]);
     setPageCount(10); // Reset to default value
     setAspectRatio('1:1'); // Reset to default value
-    setCharacter({
-      name: '',
-      description: '',
-      referenceImage: null,
-      referenceImagePreview: null,
-      fidelity: 50,
-      isAutoExtracted: false
-    }); // Reset character state
     setError('');
     setProgress('');
     setLoading(false); // Reset loading state
@@ -1331,7 +1304,7 @@ function App() {
     }, 30000); // 每30秒保存一次
 
     return () => clearInterval(saveInterval);
-  }, [user, pages, story, storyTitle, pageCount, aspectRatio, artStyle, allCharacters, character, storyWordCount, generatedResult, isGenerating]);
+  }, [user, pages, story, storyTitle, pageCount, aspectRatio, artStyle, allCharacters, storyWordCount, generatedResult, isGenerating]);
 
   // 页面卸载时保存状态
   useEffect(() => {
@@ -1343,7 +1316,7 @@ function App() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [user, pages, story, storyTitle, pageCount, aspectRatio, artStyle, allCharacters, character, storyWordCount, generatedResult, isGenerating]);
+  }, [user, pages, story, storyTitle, pageCount, aspectRatio, artStyle, allCharacters, storyWordCount, generatedResult, isGenerating]);
 
   // 初始化时检查并准备状态恢复
   useEffect(() => {
@@ -1401,10 +1374,13 @@ function App() {
             <img className="app-icon" src="/icon-mono.svg" alt="Tale Draw Icon" width="40" height="40" />
             Tale Draw - Story Book Generator
           </h1>
-          <p>Generate beautiful illustrated storybooks for your stories using AI technology</p>
         </header>
         <main className="auth-container">
           <div className="auth-form">
+            <div className="auth-welcome">
+              <p className="auth-description">Generate beautiful illustrated storybooks for your stories using AI technology</p>
+            </div>
+            
             <div className="auth-tabs">
               <button 
                 className={authMode === 'login' ? 'active' : ''}
@@ -1507,14 +1483,6 @@ function App() {
                   disabled={loading}
                 />
               </div>
-              
-              {/* Character settings separate area */}
-              <CharacterManager
-                story={story}
-                character={character}
-                onCharacterChange={setCharacter}
-                disabled={loading}
-              />
             </div>
             
             <div className="input-actions">

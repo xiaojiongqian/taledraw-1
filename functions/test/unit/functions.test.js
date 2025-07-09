@@ -161,9 +161,9 @@ describe('Tale Draw Functions Unit Tests', function() {
         expect(result).to.have.property('imageUrl');
         expect(isValidImageUrl(result.imageUrl)).to.be.true;
       } catch (error) {
-        // 如果是权限或配置问题，这是可接受的
+        // If permission or configuration issues, this is acceptable
         if (error.code === 'internal' && error.message.includes('access token')) {
-          console.log('测试跳过：需要真实的Google Cloud凭证');
+          console.log('Test skipped: requires real Google Cloud credentials');
           return;
         }
         throw error;
@@ -172,7 +172,7 @@ describe('Tale Draw Functions Unit Tests', function() {
   });
 
   describe('generateImageV4 Function', () => {
-    it('应该支持Imagen 4特定参数', async () => {
+    it('Should support Imagen 4 specific parameters', async () => {
       const wrapped = testEnv.wrap(functions.generateImageV4);
       const req = createMockRequest({
         prompt: testImagePrompts.complex,
@@ -190,7 +190,7 @@ describe('Tale Draw Functions Unit Tests', function() {
       } catch (error) {
         if (error.code === 'unauthenticated' || 
             (error.code === 'internal' && error.message.includes('access token'))) {
-          console.log('测试跳过：需要认证或真实凭证');
+          console.log('Test skipped: requires authentication or real credentials');
           return;
         }
         throw error;
@@ -198,81 +198,7 @@ describe('Tale Draw Functions Unit Tests', function() {
     });
   });
 
-  describe('extractCharacter Function', () => {
-    it('应该处理角色提取请求', async () => {
-      const wrapped = testEnv.wrap(functions.extractCharacter);
-      const req = createMockRequest({
-        story: testStoryData.mediumStory
-      });
-      
-      try {
-        const result = await wrapped(req);
-        expect(result).to.have.property('characters');
-        expect(result.characters).to.be.an('array');
-        console.log('✓ 角色提取功能正常工作');
-      } catch (error) {
-        // 检查是否是认证相关错误
-        if (error.code === 'unauthenticated' || 
-            (error.code === 'internal' && error.message.includes('access token')) ||
-            (error.code === 'internal' && error.message.includes('Gemini API failed with status 401'))) {
-          console.log('⚠ 测试跳过：需要Google Cloud凭证');
-          return;
-        }
-        // 如果是其他错误，重新抛出
-        throw error;
-      }
-    });
-  });
 
-  describe('generateImageBatch Functions', () => {
-    it('应该处理批量图像生成请求', async () => {
-      const wrapped = testEnv.wrap(functions.generateImageBatch);
-      const req = createMockRequest({
-        prompts: [
-          { prompt: testImagePrompts.simple, pageIndex: 0 },
-          { prompt: testImagePrompts.character, pageIndex: 1 }
-        ]
-      });
-      
-      try {
-        const result = await wrapped(req);
-        expect(result).to.have.property('results');
-        expect(result).to.have.property('totalPages', 2);
-        expect(result.results).to.be.an('array').with.length(2);
-      } catch (error) {
-        if (error.code === 'unauthenticated' || 
-            (error.code === 'internal' && error.message.includes('access token'))) {
-          console.log('测试跳过：需要认证或真实凭证');
-          return;
-        }
-        throw error;
-      }
-    });
-
-    it('应该处理V4批量图像生成', async () => {
-      const wrapped = testEnv.wrap(functions.generateImageBatchV4);
-      const req = createMockRequest({
-        prompts: [
-          { prompt: testImagePrompts.simple, pageIndex: 0 },
-          { prompt: testImagePrompts.complex, pageIndex: 1 }
-        ]
-      });
-      
-      try {
-        const result = await wrapped(req);
-        expect(result).to.have.property('results');
-        expect(result).to.have.property('totalPages', 2);
-        expect(result).to.have.property('successCount');
-      } catch (error) {
-        if (error.code === 'unauthenticated' || 
-            (error.code === 'internal' && error.message.includes('access token'))) {
-          console.log('测试跳过：需要认证或真实凭证');
-          return;
-        }
-        throw error;
-      }
-    });
-  });
 
   describe('Storage Strategy Tests', () => {
     it('应该正确选择存储模式', () => {

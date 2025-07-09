@@ -9,7 +9,7 @@
     "deploy:stream": "firebase deploy --only functions:generateTaleStream",
     "deploy:image": "firebase deploy --only functions:generateImage,generateImageV4",
     "deploy:core": "firebase deploy --only functions:generateTaleStream,getTaleData",
-    "deploy:all-images": "firebase deploy --only functions:generateImage,generateImageV4,generateImageBatch,generateImageBatchV4",
+    "deploy:all-images": "firebase deploy --only functions:generateImage,generateImageV4",
     "logs": "firebase functions:log",
     "lint": "echo \"lint command disabled\"",
     "predeploy": "npm run lint"

@@ -75,7 +75,6 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 ├── getTaleData (获取故事数据)
 ├── generateImage (Imagen 3图像生成)
 ├── generateImageV4 (Imagen 4图像生成)
-├── generateImageBatch (批量图像生成)
 ├── extractCharacter (角色信息提取)
 ├── generateCharacterAvatar (角色头像生成)
 ├── config.js (统一配置管理)

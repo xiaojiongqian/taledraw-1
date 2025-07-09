@@ -187,7 +187,7 @@ sequenceDiagram
   - **输入**: `prompt`, `pageIndex`, `aspectRatio`, etc.
   - **处理**: 调用Imagen 3/4 API，使用Sharp库转换为WebP格式（90%质量），保存到GCS。
   - **输出**: `{ imageUrl: string, success: true }`
-- **`generateImageBatch` / `generateImageBatchV4` (`onCall`)**:
+
   - **输入**: `prompts` 数组
   - **处理**: 批量图像生成，支持大型绘本（最多30页），15分钟超时。
   - **输出**: 批量生成结果数组。
@@ -305,8 +305,7 @@ async function compressImageToWebP(base64Data) {
 | `getTaleData`            | 256MB    | 60s     | 简单的数据库/存储读取操作               |
 | `generateImage`          | 1GB      | 300s    | 调用Imagen API + Sharp图像处理          |
 | `generateImageV4`        | 1GB      | 300s    | 调用Imagen 4 API + Sharp图像处理        |
-| `generateImageBatch`     | 2GB      | 900s    | 批量处理，支持大型绘本（最多30页）       |
-| `generateImageBatchV4`   | 2GB      | 900s    | Imagen 4批量处理，长时间运行            |
+
 | `extractCharacter`       | 512MB    | 120s    | 调用Gemini，数据量较小                  |
 | `healthCheck`            | 128MB    | 60s     | 最轻量级任务，最低内存配置              |
 
