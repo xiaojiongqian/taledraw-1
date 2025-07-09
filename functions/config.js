@@ -199,6 +199,15 @@ const UTILS = {
   })
 };
 
+// === Stripe支付配置 ===
+const STRIPE_CONFIG = {
+  SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  PRICE_ID: process.env.STRIPE_PRICE_ID || 'price_1RiV4lH1NCrMVCYNxZgC4bHN',
+  SUCCESS_URL: process.env.STRIPE_SUCCESS_URL || 'https://ai-app-taskforce.web.app/success',
+  CANCEL_URL: process.env.STRIPE_CANCEL_URL || 'https://ai-app-taskforce.web.app/cancel',
+  WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_webhook_secret'
+};
+
 // === 导出所有配置 ===
 module.exports = {
   // 基础配置
@@ -210,6 +219,7 @@ module.exports = {
   API_CONFIG,
   STORAGE_CONFIG,
   CORS_CONFIG,
+  STRIPE_CONFIG,
   
   // 提示词
   PROMPTS,
