@@ -508,31 +508,34 @@ exports.stripeWebhook = onRequest({
 
     // 处理事件
     switch (event.type) {
-      case 'checkout.session.completed':
-        const session = event.data.object;
-        const userId = session.client_reference_id || session.metadata.userId;
+    case 'checkout.session.completed': {
+      const session = event.data.object;
+      const userId = session.client_reference_id || session.metadata.userId;
         
-        if (userId) {
-          // 更新用户订阅状态
-          await admin.firestore().collection('users').doc(userId).set({
-            subscriptionStatus: 'active',
-            subscriptionId: session.subscription,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
+      if (userId) {
+        // 更新用户订阅状态
+        await admin.firestore().collection('users').doc(userId).set({
+          subscriptionStatus: 'active',
+          subscriptionId: session.subscription,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
           
-          console.log(`用户 ${userId} 订阅已激活`);
-        }
-        break;
+        console.log(`用户 ${userId} 订阅已激活`);
+      }
+      break;
+    }
         
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-        const subscription = event.data.object;
-        // 处理订阅更新或取消
-        // 这里需要查询用户ID并更新状态
-        break;
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted': {
+      const subscription = event.data.object;
+      // 处理订阅更新或取消
+      // 这里需要查询用户ID并更新状态
+      console.log(`未处理的订阅事件: ${event.type} for subscription ${subscription.id}`);
+      break;
+    }
         
-      default:
-        console.log(`未处理的事件类型: ${event.type}`);
+    default:
+      console.log(`未处理的事件类型: ${event.type}`);
     }
 
     // 返回成功响应
@@ -543,7 +546,350 @@ exports.stripeWebhook = onRequest({
   }
 });
 
-// Imagen API调用函数
+// 统一的 Imagen 模型调用封装函数
+async function callImagenModel(modelId, params, accessToken) {
+  const {
+    prompt,
+    aspectRatio = '1:1',
+    seed = 42,
+    sampleCount = 1,
+    safetyFilterLevel = 'OFF',
+    personGeneration = 'allow_all',
+    addWatermark = false,
+    negativePrompt
+  } = params;
+
+  try {
+    functionsLog.debug(`Calling Imagen model: ${modelId}`);
+    
+    const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${modelId}:predict`;
+    
+    functionsLog.debug('[callImagenModel] Using API URL:', apiUrl);
+    functionsLog.debug('[callImagenModel] Using model:', modelId);
+
+    // 构建请求实例
+    const instance = {
+      prompt: prompt
+    };
+    
+    // 构建增强的负向提示词 - 明确排除所有文字相关内容
+    const defaultNegativePrompt = [
+      'text', 'words', 'letters', 'writing', 'signs', 'symbols', 'captions', 'subtitles', 
+      'labels', 'watermarks', 'typography', 'written text', 'readable text', 'book text',
+      'speech bubbles', 'dialogue boxes', 'written words', 'script', 'handwriting',
+      'newspaper', 'magazine text', 'signage', 'readable signs', 'visible text',
+      'blurry', 'low quality', 'distorted', 'bad anatomy'
+    ].join(', ');
+    
+    let finalNegativePrompt = defaultNegativePrompt;
+    
+    if (negativePrompt && negativePrompt.trim()) {
+      finalNegativePrompt = `${negativePrompt.trim()}, ${defaultNegativePrompt}`;
+    }
+    
+    instance.negativePrompt = finalNegativePrompt;
+    functionsLog.debug('Added negative prompt to API request:', finalNegativePrompt);
+    
+    // 构建标准的图像生成参数
+    const parameters = {
+      sampleCount: Math.min(Math.max(1, sampleCount), 4), // 限制在 1-4 之间
+      safetyFilterLevel: safetyFilterLevel,
+      addWatermark: addWatermark,
+      includeRaiReason: true // 重要：启用详细的RAI反馈信息
+    };
+
+    // 智能设置人物生成参数 - 根据提示词内容动态调整
+    const promptLower = prompt.toLowerCase();
+    const hasPersonKeywords = /person|people|man|woman|boy|girl|child|adult|human|character|protagonist|hero|heroine/.test(promptLower);
+    
+    if (hasPersonKeywords) {
+      parameters.personGeneration = personGeneration || 'allow_all';
+      functionsLog.debug('Detected person-related keywords, using personGeneration:', parameters.personGeneration);
+    } else {
+      functionsLog.debug('No explicit person keywords detected, not setting personGeneration parameter');
+    }
+    
+    // 如果有种子值，尝试添加
+    if (seed && typeof seed === 'number') {
+      parameters.seed = seed;
+      functionsLog.debug('Added seed parameter:', seed);
+    }
+    
+    // 根据宽高比添加 aspectRatio 参数
+    if (aspectRatio && aspectRatio !== '1:1') {
+      parameters.aspectRatio = aspectRatio;
+      functionsLog.debug('Added aspect ratio parameter:', aspectRatio);
+    }
+    
+    const requestBody = {
+      instances: [instance],
+      parameters: parameters
+    };
+
+    functionsLog.debug('[callImagenModel] Request body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    functionsLog.debug('API Response Status:', response.status);
+    functionsLog.debug('API Response Headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      functionsLog.error('[callImagenModel] Imagen API error details:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        model: modelId
+      });
+      
+      // 解析错误响应以提取 RAI 原因
+      let raiReason = 'Unknown';
+      let detailedRaiInfo = null;
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error && errorData.error.details && errorData.error.details[0]) {
+          const errorDetail = errorData.error.details[0];
+          
+          // 提取RAI相关信息 - 支持多种格式
+          raiReason = errorDetail.reason || 
+                     errorDetail.metadata?.reason || 
+                     errorDetail['@type'] || 
+                     'Unknown';
+          
+          // 如果启用了includeRaiReason，可能会有更详细的信息
+          if (errorDetail.metadata) {
+            detailedRaiInfo = {
+              reason: raiReason,
+              metadata: errorDetail.metadata,
+              type: errorDetail['@type'] || 'Unknown'
+            };
+            functionsLog.debug('Detailed RAI info extracted:', detailedRaiInfo);
+          }
+        }
+        
+        // 特别检查是否是安全过滤相关错误
+        if (errorData.error.message && errorData.error.message.includes('safety')) {
+          raiReason = 'BLOCKED_BY_SAFETY_FILTER';
+        }
+        
+      } catch (parseError) {
+        functionsLog.debug('Could not parse error response as JSON, using raw text as reason');
+        raiReason = errorText.substring(0, 200); // 限制长度
+      }
+      
+      // 检查是否是人物生成相关的错误
+      const isPersonGenerationError = errorText.includes('Person Generation') || 
+                                    errorText.includes('person generation') ||
+                                    errorText.includes('allow_adult') ||
+                                    errorText.includes('allow_all');
+      
+      // 如果是人物生成错误，尝试自动降级处理
+      if (isPersonGenerationError && parameters.personGeneration) {
+        functionsLog.debug('Person generation error detected, attempting fallback...');
+        
+        // 移除人物生成参数，重试请求
+        const fallbackParameters = { ...parameters };
+        delete fallbackParameters.personGeneration;
+        
+        const fallbackRequestBody = {
+          instances: [instance],
+          parameters: fallbackParameters
+        };
+        
+        functionsLog.debug('Retrying without personGeneration parameter:', JSON.stringify(fallbackRequestBody, null, 2));
+        
+        const fallbackResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify(fallbackRequestBody)
+        });
+        
+        if (fallbackResponse.ok) {
+          functionsLog.debug('Fallback request succeeded without personGeneration parameter');
+          const fallbackResponseText = await fallbackResponse.text();
+          const fallbackData = JSON.parse(fallbackResponseText);
+          
+          if (fallbackData.predictions && fallbackData.predictions[0] && fallbackData.predictions[0].bytesBase64Encoded) {
+            return fallbackData.predictions[0].bytesBase64Encoded;
+          }
+        } else {
+          const fallbackErrorText = await fallbackResponse.text();
+          functionsLog.error('Fallback request also failed:', fallbackErrorText);
+        }
+      }
+      
+      // 提供更具体的错误信息
+      let errorMessage = `Imagen API failed: ${response.status}`;
+      if (response.status === 400) {
+        errorMessage += ' - Invalid request parameters';
+        if (isPersonGenerationError) {
+          errorMessage += ' (Insufficient person generation permissions, please contact administrator for permission or adjust prompts)';
+        }
+      } else if (response.status === 401) {
+        errorMessage += ' - Authentication failed';
+      } else if (response.status === 403) {
+        errorMessage += ' - Permission denied or API not enabled';
+      } else if (response.status === 429) {
+        errorMessage += ' - Rate limit exceeded';
+      } else if (response.status >= 500) {
+        errorMessage += ' - Server error';
+      }
+      errorMessage += ` - ${errorText}`;
+      
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.raiReason = raiReason; // 附加 RAI 原因
+      error.detailedRaiInfo = detailedRaiInfo; // 附加详细的RAI信息
+      throw error;
+    }
+
+    // 先获取原始响应文本进行详细记录
+    const responseText = await response.text();
+    functionsLog.debug('[callImagenModel] Raw API Response Text:', responseText);
+    functionsLog.debug('[callImagenModel] Response Text Length:', responseText.length);
+
+    // 检查响应是否为空
+    if (!responseText || responseText.trim() === '') {
+      functionsLog.error('Empty response from Imagen API');
+      throw new Error('Empty response from Imagen API');
+    }
+
+    // 尝试解析JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      functionsLog.error('[callImagenModel] Failed to parse response as JSON:', parseError);
+      functionsLog.error('[callImagenModel] Response text that failed to parse:', responseText);
+      throw new Error(`Invalid JSON response from Imagen API: ${parseError.message}`);
+    }
+    
+    functionsLog.debug('[callImagenModel] API Response structure:', {
+      hasPredictions: !!data.predictions,
+      predictionsLength: data.predictions ? data.predictions.length : 0,
+      keys: Object.keys(data),
+      fullResponse: data
+    });
+    
+    // 检查响应是否有错误信息
+    if (data.error) {
+      functionsLog.error('[callImagenModel] Imagen API returned error in response:', data.error);
+      const error = new Error(`Imagen API error: ${JSON.stringify(data.error)}`);
+      error.raiReason = data.error.details?.[0]?.reason || 'Unknown';
+      throw error;
+    }
+
+    // 兼容新旧API响应格式
+    let imageData = null;
+    
+    // 新格式：可能直接在data中包含图像数据
+    if (data.bytesBase64Encoded) {
+      functionsLog.debug('Found image data in new format (direct bytesBase64Encoded)');
+      imageData = data.bytesBase64Encoded;
+    }
+    // 检查是否有candidates字段（类似GenerateContentResponse格式）
+    else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+      functionsLog.debug('Found image data in candidates format');
+      const candidate = data.candidates[0];
+      if (candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].inlineData) {
+        imageData = candidate.content.parts[0].inlineData.data;
+      }
+    }
+    // 旧格式：predictions字段
+    else if (data.predictions && data.predictions[0]) {
+      functionsLog.debug('Found image data in legacy predictions format');
+      const prediction = data.predictions[0];
+      if (prediction.bytesBase64Encoded) {
+        imageData = prediction.bytesBase64Encoded;
+      }
+    }
+    // 检查其他可能的响应格式
+    else if (data.images && data.images[0]) {
+      functionsLog.debug('Found image data in images array format');
+      imageData = data.images[0].bytesBase64Encoded || data.images[0].data;
+    }
+    
+    if (!imageData) {
+      functionsLog.error('[callImagenModel] No image data found in response. Response structure:', {
+        keys: Object.keys(data),
+        hasError: !!data.error,
+        hasPredictions: !!data.predictions,
+        hasCandidates: !!data.candidates,
+        hasImages: !!data.images,
+        hasBytesBase64Encoded: !!data.bytesBase64Encoded,
+        fullResponse: JSON.stringify(data, null, 2)
+      });
+      
+      // 尝试从响应中提取 RAI 信息
+      let raiReason = 'Unknown';
+      let detailedRaiInfo = null;
+      
+      // 检查是否有 RAI 相关信息
+      if (data.predictions && data.predictions[0] && data.predictions[0].raiFilteredReason) {
+        // Imagen API 的 RAI 过滤信息在 predictions[0].raiFilteredReason 中
+        raiReason = data.predictions[0].raiFilteredReason;
+        detailedRaiInfo = {
+          reason: raiReason,
+          source: 'predictions.raiFilteredReason',
+          message: raiReason.includes('violated') ? 'Content violates usage guidelines' : raiReason
+        };
+      } else if (data.candidates && data.candidates[0] && data.candidates[0].finishReason) {
+        raiReason = data.candidates[0].finishReason;
+        detailedRaiInfo = {
+          reason: raiReason,
+          safetyRatings: data.candidates[0].safetyRatings || [],
+          blockReason: data.candidates[0].blockReason || 'Unknown'
+        };
+      } else if (data.error && data.error.details) {
+        // 从错误详情中提取 RAI 信息
+        for (const detail of data.error.details) {
+          if (detail.reason || detail.metadata) {
+            raiReason = detail.reason || detail.metadata?.reason || 'Unknown';
+            detailedRaiInfo = {
+              reason: raiReason,
+              metadata: detail.metadata || {},
+              type: detail['@type'] || 'Unknown'
+            };
+            break;
+          }
+        }
+      } else if (data.blockReason) {
+        raiReason = data.blockReason;
+        detailedRaiInfo = {
+          reason: raiReason,
+          safetyRatings: data.safetyRatings || []
+        };
+      }
+      
+      functionsLog.error('[callImagenModel] RAI information extracted:', { raiReason, detailedRaiInfo });
+      
+      const error = new Error('No image data found in Imagen API response. Response format may have changed.');
+      error.raiReason = raiReason;
+      error.detailedRaiInfo = detailedRaiInfo;
+      error.fullResponse = data; // 保存完整响应供调试
+      throw error;
+    }
+
+    functionsLog.debug('Successfully received image data from Imagen API');
+    return imageData;
+
+  } catch (error) {
+    functionsLog.error('[callImagenModel] Error calling Imagen model:', error);
+    throw error;
+  }
+}
+
+// Imagen API调用函数 - 支持多模型选择
 exports.generateImage = onCall({
   region: LOCATION,
   memory: '274MB', // 优化：从1GB减少到274MB (基于13.34%利用率 + 安全边际)
@@ -556,6 +902,7 @@ exports.generateImage = onCall({
 
   const {
     prompt,
+    model = API_CONFIG.DEFAULT_IMAGEN_MODEL, // 新增：模型选择参数
     pageIndex = 0,
     aspectRatio = '1:1',
     maxRetries = 2,
@@ -575,9 +922,19 @@ exports.generateImage = onCall({
     throw new HttpsError('invalid-argument', 'Prompt is required');
   }
 
+  // 验证模型参数
+  if (!Object.keys(API_CONFIG.IMAGEN_MODELS).includes(model)) {
+    functionsLog.error(`[generateImage] Unsupported model: ${model}`);
+    throw new HttpsError('invalid-argument', `Unsupported model: ${model}. Supported models: ${Object.keys(API_CONFIG.IMAGEN_MODELS).join(', ')}`);
+  }
+
+  const modelId = API_CONFIG.IMAGEN_MODELS[model];
+  
   functionsLog.debug(`Starting image generation for page ${pageIndex + 1}:`, {
     promptLength: prompt.length,
     aspectRatio,
+    model: model,
+    modelId: modelId,
     hasReference: !!referenceImageUrl,
     userId: request.auth.uid
   });
@@ -590,270 +947,24 @@ exports.generateImage = onCall({
   
   const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '1:1';
 
-  // 创建Imagen API调用函数
-  const callImagenAPI = async (accessToken) => {
-    // 使用 API_CONFIG.IMAGEN3_MODEL 进行纯文本到图像生成
-    // 不再处理参考图像，风格一致性通过种子值和增强提示词实现
-    
-    try {
-      functionsLog.debug(`Generating image for page ${pageIndex + 1} with aspect ratio ${aspectRatio} (${imagenAspectRatio})`);
-
-      if (!accessToken) {
-        throw new Error('Access token was not provided to callImagenAPI.');
-      }
-
-      // 使用 API_CONFIG.IMAGEN3_MODEL 模型，该模型支持图像生成
-      // 注意：imagen-3.0-capability-001 不支持图像生成，只支持图像编辑
-      const modelName = API_CONFIG.IMAGEN3_MODEL;
-      const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${modelName}:predict`;
-      
-      functionsLog.debug('[generateImage] Using API URL:', apiUrl);
-      functionsLog.debug('[generateImage] Using model:', modelName);
-
-      // 构建 Imagen 3 Generate 模型的标准请求格式
-      const instance = {
-        prompt: prompt
-      };
-      
-      // 构建增强的负向提示词 - 明确排除所有文字相关内容
-      const defaultNegativePrompt = [
-        'text', 'words', 'letters', 'writing', 'signs', 'symbols', 'captions', 'subtitles', 
-        'labels', 'watermarks', 'typography', 'written text', 'readable text', 'book text',
-        'speech bubbles', 'dialogue boxes', 'written words', 'script', 'handwriting',
-        'newspaper', 'magazine text', 'signage', 'readable signs', 'visible text',
-        'blurry', 'low quality', 'distorted', 'bad anatomy'
-      ].join(', ');
-      
-      let finalNegativePrompt = defaultNegativePrompt;
-      
-      if (negativePrompt && negativePrompt.trim()) {
-        finalNegativePrompt = `${negativePrompt.trim()}, ${defaultNegativePrompt}`;
-      }
-      
-      instance.negativePrompt = finalNegativePrompt;
-      functionsLog.debug('Added negative prompt to API request:', finalNegativePrompt);
-      
-      // API_CONFIG.IMAGEN3_MODEL 专门用于文本到图像生成
-      // 风格一致性通过种子值和增强的文本提示词实现
-      
-      // 构建标准的图像生成参数 - 智能调整人物生成设置
-      const parameters = {
-        sampleCount: Math.min(Math.max(1, sampleCount), 4), // 限制在 1-4 之间
-        safetyFilterLevel: safetyFilterLevel,
-        addWatermark: addWatermark
-      };
-
-      // 智能设置人物生成参数 - 根据提示词内容动态调整
-      const promptLower = prompt.toLowerCase();
-      const hasPersonKeywords = /person|people|man|woman|boy|girl|child|adult|human|character|protagonist|hero|heroine/.test(promptLower);
-      
-      if (hasPersonKeywords) {
-        // 如果提示词包含人物相关关键词，允许所有年龄段人物和面部
-        parameters.personGeneration = personGeneration || 'allow_all';
-        functionsLog.debug('Detected person-related keywords, using personGeneration:', parameters.personGeneration);
-      } else {
-        // 如果没有明确的人物关键词，可以不设置这个参数
-        functionsLog.debug('No explicit person keywords detected, not setting personGeneration parameter');
-      }
-      
-      // 如果有种子值，尝试添加
-      if (seed && typeof seed === 'number') {
-        parameters.seed = seed;
-        functionsLog.debug('Added seed parameter:', seed);
-      }
-      
-      // 根据宽高比添加 aspectRatio 参数
-      if (aspectRatio && aspectRatio !== '1:1') {
-        parameters.aspectRatio = aspectRatio;
-        functionsLog.debug('Added aspect ratio parameter:', aspectRatio);
-      }
-      
-      const requestBody = {
-        instances: [instance],
-        parameters: parameters
-      };
-
-      functionsLog.debug('[generateImage] Request body:', JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      functionsLog.debug('API Response Status:', response.status);
-      functionsLog.debug('API Response Headers:', Object.fromEntries(response.headers.entries()));
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        functionsLog.error('[generateImage] Imagen API error details:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        });
-        
-        // 检查是否是人物生成相关的错误
-        const isPersonGenerationError = errorText.includes('Person Generation') || 
-                                      errorText.includes('person generation') ||
-                                      errorText.includes('allow_adult') ||
-                                      errorText.includes('allow_all');
-        
-        // 如果是人物生成错误，尝试自动降级处理
-        if (isPersonGenerationError && parameters.personGeneration) {
-          functionsLog.debug('Person generation error detected, attempting fallback...');
-          
-          // 移除人物生成参数，重试请求
-          const fallbackParameters = { ...parameters };
-          delete fallbackParameters.personGeneration;
-          
-          const fallbackRequestBody = {
-            instances: [instance],
-            parameters: fallbackParameters
-          };
-          
-          functionsLog.debug('Retrying without personGeneration parameter:', JSON.stringify(fallbackRequestBody, null, 2));
-          
-          const fallbackResponse = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=utf-8',
-            },
-            body: JSON.stringify(fallbackRequestBody)
-          });
-          
-          if (fallbackResponse.ok) {
-            functionsLog.debug('Fallback request succeeded without personGeneration parameter');
-            const fallbackResponseText = await fallbackResponse.text();
-            const fallbackData = JSON.parse(fallbackResponseText);
-            
-            if (fallbackData.predictions && fallbackData.predictions[0] && fallbackData.predictions[0].bytesBase64Encoded) {
-              return fallbackData.predictions[0].bytesBase64Encoded;
-            }
-          } else {
-            const fallbackErrorText = await fallbackResponse.text();
-            functionsLog.error('Fallback request also failed:', fallbackErrorText);
-          }
-        }
-        
-        // 提供更具体的错误信息
-        let errorMessage = `Imagen API failed: ${response.status}`;
-        if (response.status === 400) {
-          errorMessage += ' - Invalid request parameters';
-          if (isPersonGenerationError) {
-            errorMessage += ' (Insufficient person generation permissions, please contact administrator for permission or adjust prompts)';
-          }
-        } else if (response.status === 401) {
-          errorMessage += ' - Authentication failed';
-        } else if (response.status === 403) {
-          errorMessage += ' - Permission denied or API not enabled';
-        } else if (response.status === 429) {
-          errorMessage += ' - Rate limit exceeded';
-        } else if (response.status >= 500) {
-          errorMessage += ' - Server error';
-        }
-        errorMessage += ` - ${errorText}`;
-        
-        const error = new Error(errorMessage);
-        error.status = response.status;
-        throw error;
-      }
-
-      // 先获取原始响应文本进行详细记录
-      const responseText = await response.text();
-      functionsLog.debug('[generateImage] Raw API Response Text:', responseText);
-      functionsLog.debug('[generateImage] Response Text Length:', responseText.length);
-
-      // 检查响应是否为空
-      if (!responseText || responseText.trim() === '') {
-        functionsLog.error('Empty response from Imagen API');
-        throw new Error('Empty response from Imagen API');
-      }
-
-      // 尝试解析JSON
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        functionsLog.error('[generateImage] Failed to parse response as JSON:', parseError);
-        functionsLog.error('[generateImage] Response text that failed to parse:', responseText);
-        throw new Error(`Invalid JSON response from Imagen API: ${parseError.message}`);
-      }
-      
-      functionsLog.debug('[generateImage] API Response structure:', {
-        hasPredictions: !!data.predictions,
-        predictionsLength: data.predictions ? data.predictions.length : 0,
-        keys: Object.keys(data),
-        fullResponse: data
-      });
-      
-      // 检查响应是否有错误信息
-      if (data.error) {
-        functionsLog.error('[generateImage] Imagen API returned error in response:', data.error);
-        throw new Error(`Imagen API error: ${JSON.stringify(data.error)}`);
-      }
-
-      // 兼容新旧API响应格式
-      let imageData = null;
-      
-      // 新格式：可能直接在data中包含图像数据
-      if (data.bytesBase64Encoded) {
-        functionsLog.debug('Found image data in new format (direct bytesBase64Encoded)');
-        imageData = data.bytesBase64Encoded;
-      }
-      // 检查是否有candidates字段（类似GenerateContentResponse格式）
-      else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-        functionsLog.debug('Found image data in candidates format');
-        const candidate = data.candidates[0];
-        if (candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].inlineData) {
-          imageData = candidate.content.parts[0].inlineData.data;
-        }
-      }
-      // 旧格式：predictions字段
-      else if (data.predictions && data.predictions[0]) {
-        functionsLog.debug('Found image data in legacy predictions format');
-        const prediction = data.predictions[0];
-        if (prediction.bytesBase64Encoded) {
-          imageData = prediction.bytesBase64Encoded;
-        }
-      }
-      // 检查其他可能的响应格式
-      else if (data.images && data.images[0]) {
-        functionsLog.debug('Found image data in images array format');
-        imageData = data.images[0].bytesBase64Encoded || data.images[0].data;
-      }
-      
-      if (!imageData) {
-        functionsLog.error('[generateImage] No image data found in response. Response structure:', {
-          keys: Object.keys(data),
-          hasError: !!data.error,
-          hasPredictions: !!data.predictions,
-          hasCandidates: !!data.candidates,
-          hasImages: !!data.images,
-          hasBytesBase64Encoded: !!data.bytesBase64Encoded,
-          fullResponse: JSON.stringify(data, null, 2)
-        });
-        throw new Error('No image data found in Imagen API response. Response format may have changed.');
-      }
-
-      functionsLog.debug('Successfully received image data from Imagen API');
-      return imageData;
-
-    } catch (error) {
-      functionsLog.error('[generateImage] Error in callImagenAPI:', error);
-      throw error;
-    }
-  };
-
   try {
     const client = await auth.getClient();
     const accessToken = (await client.getAccessToken()).token;
     if (!accessToken) throw new HttpsError('internal', 'Failed to acquire access token.');
 
-    const base64Data = await retryWithBackoff(() => callImagenAPI(accessToken), maxRetries);
+    // 准备调用参数
+    const callParams = {
+      prompt,
+      aspectRatio: imagenAspectRatio,
+      seed,
+      sampleCount,
+      safetyFilterLevel,
+      personGeneration,
+      addWatermark,
+      negativePrompt
+    };
+
+    const base64Data = await retryWithBackoff(() => callImagenModel(modelId, callParams, accessToken), maxRetries);
 
     const bucketName = UTILS.getBucketName();
     const bucket = admin.storage().bucket(bucketName);
@@ -901,7 +1012,7 @@ exports.generateImage = onCall({
     
     if (error instanceof HttpsError) throw error;
 
-    // 提供更详细的错误信息
+    // 提供更详细的错误信息，包括 RAI 原因
     let errorMessage = `Failed to generate image: ${error.message}`;
     if (error.status) {
       errorMessage += ` (HTTP ${error.status})`;
@@ -910,10 +1021,18 @@ exports.generateImage = onCall({
     functionsLog.error('Final error details:', {
       message: error.message,
       status: error.status,
+      raiReason: error.raiReason,
       stack: error.stack
     });
 
-    throw new HttpsError('internal', errorMessage);
+    // 返回包含详细 RAI 信息的错误详情
+    const errorDetails = {
+      raiReason: error.raiReason || 'Unknown',
+      detailedRaiInfo: error.detailedRaiInfo || null,
+      originalError: error.message
+    };
+
+    throw new HttpsError('internal', errorMessage, errorDetails);
   }
 });
 
@@ -1018,7 +1137,6 @@ exports.healthCheck = onCall({
     service: 'tale-draw-functions',
     functions: [
       'generateImage',
-      'generateImageV4', 
       'generateTaleStream',
       'getTaleData',
       'healthCheck',
@@ -1347,204 +1465,6 @@ async function saveDataStreamWise(userId, taleId, taleData) {
   });
 }
 
-// ========== Imagen 4 专用函数组 ========== //
-
-/**
- * 专用函数组：使用Imagen 4生成图像
- * - 使用 LOCATION 区域
- * - 模型：API_CONFIG.IMAGEN4_MODEL
- * - 支持一致的角色生成
- * - 更好的提示词理解能力
- * - 更高的图像质量
- * - 统一使用当前项目配置
- */
-exports.generateImageV4 = onCall({
-  memory: '282MB', // 优化：从1GB减少到282MB (基于13.74%利用率 + 安全边际)
-  timeoutSeconds: 300
-}, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'User must be authenticated');
-  }
-
-  const {
-    prompt,
-    pageIndex,
-    aspectRatio = '1:1',
-    seed = 1,
-    sampleCount = 1,
-    safetyFilterLevel = 'block_most',
-    personGeneration = 'allow_adult',
-    addWatermark = false
-  } = request.data;
-
-  const callImagen4API = async (accessToken) => {
-    const apiUrl = UTILS.buildApiUrl(API_CONFIG.IMAGEN4_MODEL, 'predict');
-    const instance = { prompt };
-    const parameters = {
-      aspectRatio,
-      seed,
-      sampleCount,
-      safetyFilterLevel,
-      personGeneration,
-      addWatermark
-    };
-
-    const requestBody = {
-      instances: [instance],
-      parameters: parameters,
-    };
-
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      const responseText = await response.text();
-      functionsLog.debug('[generateImageV4] Imagen 4 API raw response:', responseText);
-
-      if (!response.ok) {
-        let errorMessage = `Imagen 4 API failed: ${response.status}`;
-        errorMessage += ` - ${responseText}`;
-        const error = new Error(errorMessage);
-        error.status = response.status;
-        throw error;
-      }
-
-      if (!responseText || responseText.trim() === '') {
-        throw new Error('Empty response from Imagen 4 API');
-      }
-
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        functionsLog.error('[generateImageV4] Failed to parse Imagen 4 API response as JSON:', responseText);
-        throw new Error(`Invalid JSON response from Imagen 4 API: ${parseError.message}`);
-      }
-
-      if (data.error) {
-        functionsLog.error('[generateImageV4] Imagen 4 API returned error:', data.error);
-        throw new Error(`Imagen 4 API error: ${JSON.stringify(data.error)}`);
-      }
-
-      // 兼容新旧API响应格式
-      let imageData = null;
-      
-      // 新格式：可能直接在data中包含图像数据
-      if (data.bytesBase64Encoded) {
-        functionsLog.debug('[generateImageV4] Found image data in new format (direct bytesBase64Encoded)');
-        imageData = data.bytesBase64Encoded;
-      }
-      // 检查是否有candidates字段（类似GenerateContentResponse格式）
-      else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-        functionsLog.debug('[generateImageV4] Found image data in candidates format');
-        const candidate = data.candidates[0];
-        if (candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].inlineData) {
-          imageData = candidate.content.parts[0].inlineData.data;
-        }
-      }
-      // 旧格式：predictions字段
-      else if (data.predictions && data.predictions[0]) {
-        functionsLog.debug('[generateImageV4] Found image data in legacy predictions format');
-        const prediction = data.predictions[0];
-        if (prediction.bytesBase64Encoded) {
-          imageData = prediction.bytesBase64Encoded;
-        }
-      }
-      // 检查其他可能的响应格式
-      else if (data.images && data.images[0]) {
-        functionsLog.debug('[generateImageV4] Found image data in images array format');
-        imageData = data.images[0].bytesBase64Encoded || data.images[0].data;
-      }
-      
-      if (!imageData) {
-        functionsLog.error('[generateImageV4] No image data found in response. Response structure:', {
-          keys: Object.keys(data),
-          hasError: !!data.error,
-          hasPredictions: !!data.predictions,
-          hasCandidates: !!data.candidates,
-          hasImages: !!data.images,
-          hasBytesBase64Encoded: !!data.bytesBase64Encoded,
-          fullResponse: JSON.stringify(data, null, 2)
-        });
-        throw new Error('No image data found in Imagen 4 API response. Response format may have changed.');
-      }
-
-      functionsLog.debug('[generateImageV4] Successfully received image data from Imagen 4 API');
-      return imageData;
-    } catch (error) {
-      functionsLog.error('[generateImageV4] Exception:', {
-        prompt,
-        pageIndex,
-        aspectRatio,
-        seed,
-        sampleCount,
-        safetyFilterLevel,
-        personGeneration,
-        addWatermark,
-        apiUrl: typeof apiUrl !== 'undefined' ? apiUrl : null,
-        requestBody: typeof requestBody !== 'undefined' ? requestBody : null,
-        error: error && error.message ? error.message : error
-      });
-      throw error;
-    }
-  };
-
-  try {
-    const client = await auth.getClient();
-    const accessToken = (await client.getAccessToken()).token;
-
-    if (!accessToken) {
-      throw new HttpsError('internal', 'Failed to acquire access token for Imagen4.');
-    }
-
-    const base64Data = await callImagen4API(accessToken);
-
-    // 上传到Firebase Storage
-    const bucketName = UTILS.getBucketName();
-    const bucket = admin.storage().bucket(bucketName);
-    const fileName = `tale-images-v4/${request.auth.uid}/${Date.now()}_page_${pageIndex}.webp`;
-    const file = bucket.file(fileName);
-    
-    functionsLog.debug('Converting Imagen 4 image to WebP format...');
-    
-    // 转换图像为WebP格式
-    const compressedImageBuffer = await compressImageToWebP(base64Data);
-    
-    functionsLog.debug('Uploading compressed WebP image (Imagen 4) to Firebase Storage:', fileName);
-    functionsLog.debug(`Original size: ~${Math.round(base64Data.length * 0.75)} bytes, Compressed size: ${compressedImageBuffer.length} bytes`);
-
-    await file.save(compressedImageBuffer, {
-      metadata: {
-        contentType: 'image/webp',
-        metadata: {
-          userId: request.auth.uid,
-          pageIndex: pageIndex.toString(),
-          prompt: prompt.substring(0, 500),
-          originalFormat: 'webp',
-          compressedFormat: 'webp',
-          modelVersion: 'imagen-4'
-        }
-      }
-    });
-
-    await file.makePublic();
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-    return { imageUrl: publicUrl, pageIndex: pageIndex, success: true };
-
-  } catch (error) {
-    let errorMessage = `Failed to generate image (Imagen 4): ${error.message}`;
-    if (error.status) {
-      errorMessage += ` (HTTP ${error.status})`;
-    }
-    throw new HttpsError('internal', errorMessage);
-  }
-});
 
 
 

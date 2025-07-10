@@ -644,6 +644,60 @@ const PageItem = ({
     }
   };
 
+  // 获取错误类型的显示文本
+  const getErrorTypeText = (errorType) => {
+    switch (errorType) {
+      case 'safety_filter':
+        return 'Content Filtered';
+      case 'timeout':
+        return 'Generation Timeout';
+      case 'quota':
+        return 'API Quota Exceeded';
+      case 'auth':
+        return 'Authentication Error';
+      case 'permission':
+        return 'Permission Denied';
+      case 'server':
+        return 'Server Error';
+      default:
+        return 'Generation Failed';
+    }
+  };
+
+  // 获取错误类型的图标
+  const getErrorIcon = (errorType) => {
+    switch (errorType) {
+      case 'safety_filter':
+        return '🛡️';
+      case 'timeout':
+        return '⏱️';
+      case 'quota':
+        return '📊';
+      case 'auth':
+        return '🔐';
+      case 'permission':
+        return '🚫';
+      case 'server':
+        return '⚠️';
+      default:
+        return '❌';
+    }
+  };
+
+  // 获取模型显示名称
+  const getModelDisplayName = (model) => {
+    switch (model) {
+      case 'imagen4-fast':
+        return 'Imagen 4 Fast';
+      case 'imagen4':
+        return 'Imagen 4';
+      case 'imagen3':
+        return 'Imagen 3';
+      default:
+        return model || 'Unknown Model';
+    }
+  };
+
   return (
     <div className={`page-item ${page.status || 'unknown'}`}>
       <div className="page-header">
@@ -750,8 +804,14 @@ const PageItem = ({
           ) : page.status === 'error' ? (
             <div className="image-error">
               <div className="error-message-box">
-                <p className="error-title">Generation Failed</p>
-                <p className="error-detail">{page.error}</p>
+                <div className="error-icon">{getErrorIcon(page.errorType)}</div>
+                <p className="error-title">{getErrorTypeText(page.errorType)}</p>
+                {page.errorDetails && (
+                  <p className="error-detail">{page.errorDetails}</p>
+                )}
+                {page.model && (
+                  <p className="error-model">Model: {getModelDisplayName(page.model)}</p>
+                )}
                 <button 
                   className="regenerate-button"
                   onClick={handleSaveAndRegenerate}
@@ -777,14 +837,21 @@ const PageItem = ({
                   </div>
                 </div>
               ) : (
-                <img 
-                  src={page.image} 
-                  alt={`${index + 1}. Illustration`}
-                  onClick={handleImageClick}
-                  onError={handleImageLoadError}
-                  className="clickable-image"
-                  title="Click to open in new window"
-                />
+                <>
+                  <img 
+                    src={page.image} 
+                    alt={`${index + 1}. Illustration`}
+                    onClick={handleImageClick}
+                    onError={handleImageLoadError}
+                    className="clickable-image"
+                    title="Click to open in new window"
+                  />
+                  {page.model && (
+                    <div className="image-model-badge">
+                      {getModelDisplayName(page.model)}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (

@@ -40,7 +40,6 @@ describe('Tale Draw - Complete Integration Tests', () => {
       expect(result).to.have.property('functions');
       expect(result.functions).to.include.members([
         'generateImage',
-        'generateImageV4',
         'generateTaleStream',
         'getTaleData',
         'healthCheck'
@@ -108,10 +107,11 @@ describe('Tale Draw - Complete Integration Tests', () => {
       }
     });
 
-    it('Step 4: Single page image generation - Imagen 3', async () => {
+    it('Step 4: Multi-model image generation - Imagen3', async () => {
       const wrapped = testEnv.wrap(functions.generateImage);
       const req = createMockRequest({
         prompt: 'A cute little girl in a red hood walking through a peaceful forest with tall trees and colorful flowers',
+        model: 'imagen3',
         pageIndex: 0,
         aspectRatio: '1:1',
         seed: 42
@@ -125,22 +125,23 @@ describe('Tale Draw - Complete Integration Tests', () => {
         expect(result).to.have.property('imageUrl');
         expect(isValidImageUrl(result.imageUrl)).to.be.true;
         
-        console.log('✓ Imagen 3 single page image generation successful');
+        console.log('✓ Imagen3 model generation successful');
         
       } catch (error) {
         if (error.code === 'unauthenticated' || 
             (error.code === 'internal' && error.message.includes('access token'))) {
-          console.log('⚠ Imagen 3 test skipped: requires Google Cloud credentials');
+          console.log('⚠ Imagen3 test skipped: requires Google Cloud credentials');
           return;
         }
         throw error;
       }
     });
 
-    it('Step 5: Single page image generation - Imagen 4', async () => {
-      const wrapped = testEnv.wrap(functions.generateImageV4);
+    it('Step 5: Multi-model image generation - Imagen4', async () => {
+      const wrapped = testEnv.wrap(functions.generateImage);
       const req = createMockRequest({
         prompt: 'A friendly grandmother in her cozy cottage, wearing glasses and an apron, children\'s book illustration style',
+        model: 'imagen4',
         pageIndex: 1,
         aspectRatio: '16:9',
         seed: 42,
@@ -156,12 +157,42 @@ describe('Tale Draw - Complete Integration Tests', () => {
         expect(result).to.have.property('imageUrl');
         expect(isValidImageUrl(result.imageUrl)).to.be.true;
         
-        console.log('✓ Imagen 4 single page image generation successful');
+        console.log('✓ Imagen4 model generation successful');
         
       } catch (error) {
         if (error.code === 'unauthenticated' || 
             (error.code === 'internal' && error.message.includes('access token'))) {
-          console.log('⚠ Imagen 4 test skipped: requires Google Cloud credentials');
+          console.log('⚠ Imagen4 test skipped: requires Google Cloud credentials');
+          return;
+        }
+        throw error;
+      }
+    });
+
+    it('Step 6: Multi-model image generation - Imagen4-fast (default)', async () => {
+      const wrapped = testEnv.wrap(functions.generateImage);
+      const req = createMockRequest({
+        prompt: 'A magical forest scene with colorful butterflies and sunbeams, children\'s book illustration style',
+        // 不指定 model，应该使用默认的 imagen4-fast
+        pageIndex: 2,
+        aspectRatio: '1:1',
+        seed: 42
+      });
+      
+      try {
+        const result = await wrapped(req);
+        
+        expect(result).to.have.property('success', true);
+        expect(result).to.have.property('pageIndex', 2);
+        expect(result).to.have.property('imageUrl');
+        expect(isValidImageUrl(result.imageUrl)).to.be.true;
+        
+        console.log('✓ Imagen4-fast (default) model generation successful');
+        
+      } catch (error) {
+        if (error.code === 'unauthenticated' || 
+            (error.code === 'internal' && error.message.includes('access token'))) {
+          console.log('⚠ Imagen4-fast test skipped: requires Google Cloud credentials');
           return;
         }
         throw error;
@@ -227,6 +258,23 @@ describe('Tale Draw - Complete Integration Tests', () => {
           return;
         }
         console.log('✓ Correctly handled invalid aspect ratio');
+      }
+    });
+
+    it('Should handle invalid model parameters', async () => {
+      const wrapped = testEnv.wrap(functions.generateImage);
+      const req = createMockRequest({
+        prompt: testImagePrompts.simple,
+        model: 'invalid-model' // Invalid model
+      });
+      
+      try {
+        await wrapped(req);
+        expect.fail('Should throw invalid model error');
+      } catch (error) {
+        expect(error.code).to.equal('invalid-argument');
+        expect(error.message).to.include('Unsupported model');
+        console.log('✓ Correctly handled invalid model parameter');
       }
     });
   });

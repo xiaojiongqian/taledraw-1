@@ -19,6 +19,7 @@ class StateManager {
         storyTitle: state.storyTitle,
         pageCount: state.pageCount,
         aspectRatio: state.aspectRatio,
+        selectedImagenModel: state.selectedImagenModel,
         artStyle: state.artStyle,
         allCharacters: state.allCharacters,
         character: state.character,

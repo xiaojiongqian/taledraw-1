@@ -5,6 +5,7 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthState
 import { generateTaleStream, generateImageWithImagen } from './api';
 import PageSelector from './components/PageSelector';
 import AspectRatioSelector from './components/AspectRatioSelector';
+import ImagenModelSelector from './components/ImagenModelSelector';
 import PageItem from './components/PageItem';
 import CheckoutButton from './components/CheckoutButton';
 import { ToastContainer } from 'react-toastify';
@@ -25,6 +26,7 @@ function App() {
   const [storyTitle, setStoryTitle] = useState(''); // Auto-generated story title
   const [pageCount, setPageCount] = useState(10); // Default 10 pages
   const [aspectRatio, setAspectRatio] = useState('1:1'); // Default 1:1
+  const [selectedImagenModel, setSelectedImagenModel] = useState('imagen4-fast'); // Default Imagen4-fast
   const [artStyle, setArtStyle] = useState('Children\'s picture book illustration style'); // Art style state
   const [allCharacters, setAllCharacters] = useState({}); // All characters info state
   const [pages, setPages] = useState([]);
@@ -157,6 +159,7 @@ function App() {
       setStoryTitle(savedState.storyTitle || '');
       setPageCount(savedState.pageCount || 10);
       setAspectRatio(savedState.aspectRatio || '1:1');
+      setSelectedImagenModel(savedState.selectedImagenModel || 'imagen4-fast');
       setArtStyle(savedState.artStyle || '');
       setAllCharacters(savedState.allCharacters || {});
       setStoryWordCount(savedState.storyWordCount || 0);
@@ -309,6 +312,7 @@ function App() {
         storyTitle,
         pageCount,
         aspectRatio,
+        selectedImagenModel,
         artStyle,
         allCharacters,
         pages,
@@ -351,6 +355,7 @@ function App() {
       setStoryTitle(''); // 清空故事标题
       setPageCount(10); // 重置为默认值
       setAspectRatio('1:1'); // 重置为默认值
+      setSelectedImagenModel('imagen4-fast'); // 重置为默认模型
       setLogs([]); // Clear logs
       setShowDebugWindow(false); // Hide debug window
       setHasRestoredState(false); // Reset restoration state flag
@@ -566,16 +571,25 @@ function App() {
           page,
           charactersData,
           artStyleData,
+          selectedImagenModel,
           (message, type) => {
             // Add log with appropriate type for image generation
             addLog(message, type === 'image' ? 'image' : type);
           }
         );
 
-        // 更新单个页面的图片和状态
+        // 更新单个页面的图片和状态，包含模型信息
         setPages(prevPages => prevPages.map((p, index) => {
           if (index === i) {
-            return { ...p, image: imageUrl, status: 'success', error: null };
+            return { 
+              ...p, 
+              image: imageUrl, 
+              status: 'success', 
+              error: null,
+              errorType: null,
+              errorDetails: null,
+              model: selectedImagenModel
+            };
           }
           return p;
         }));
@@ -599,16 +613,23 @@ function App() {
           // Break out of the loop when aborted
           break;
         } else {
-          // 更新页面状态为错误
-          setPages(prevPages => prevPages.map((p, index) => {
-            if (index === i) {
-              return { ...p, status: 'error', error: error.message };
-            }
-            return p;
-          }));
+                  // 更新页面状态为错误，包含详细错误信息
+        setPages(prevPages => prevPages.map((p, index) => {
+          if (index === i) {
+            return { 
+              ...p, 
+              status: 'error', 
+              error: error.message,
+              errorType: error.type || 'unknown',
+              errorDetails: error.details || error.message,
+              model: error.model || selectedImagenModel
+            };
+          }
+          return p;
+        }));
 
-          errorCount++;
-          addLog(`Page ${i + 1} image generation failed: ${error.message}`, 'error');
+        errorCount++;
+        addLog(`Page ${i + 1} image generation failed: ${error.message}`, 'error');
         }
       }
 
@@ -673,6 +694,7 @@ function App() {
     setPages([]);
     setPageCount(10); // Reset to default value
     setAspectRatio('1:1'); // Reset to default value
+    setSelectedImagenModel('imagen4-fast'); // Reset to default model
     setError('');
     setProgress('');
     setLoading(false); // Reset loading state
@@ -715,13 +737,14 @@ function App() {
         pageToRegenerate, // pageData
         allCharacters,    // allCharacters
         artStyle,         // artStyle
+        selectedImagenModel, // model
         (message, type) => {
           // Add log with appropriate type for image generation
           addLog(message, type === 'image' ? 'image' : type);
         }
       );
 
-      // Step 3: Update page with new image and 'success' status
+      // Step 3: Update page with new image and 'success' status, including model info
       const finalPages = pages.map((page, index) => {
         if (index === pageIndex) {
           return {
@@ -730,6 +753,9 @@ function App() {
             imagePrompt: prompt,
             status: 'success',
             error: null,
+            errorType: null,
+            errorDetails: null,
+            model: selectedImagenModel
           };
         }
         return page;
@@ -746,13 +772,16 @@ function App() {
       safeLog.error(`Failed to regenerate page ${pageIndex + 1}:`, error);
       addLog(`Failed to regenerate page ${pageIndex + 1}: ${error.message}`, 'error');
       
-      // Step 4: Update page with 'error' status
+      // Step 4: Update page with 'error' status and detailed error info
       const errorPages = pages.map((page, index) => {
         if (index === pageIndex) {
           return {
             ...page,
             status: 'error',
             error: error.message,
+            errorType: error.type || 'unknown',
+            errorDetails: error.details || error.message,
+            model: error.model || selectedImagenModel
           };
         }
         return page;
@@ -1703,6 +1732,11 @@ function App() {
                 <AspectRatioSelector 
                   aspectRatio={aspectRatio}
                   onAspectRatioChange={setAspectRatio}
+                  disabled={loading}
+                />
+                <ImagenModelSelector
+                  selectedModel={selectedImagenModel}
+                  onModelChange={setSelectedImagenModel}
                   disabled={loading}
                 />
               </div>

@@ -3,7 +3,7 @@ import { functions } from './firebase';
 import { getAuth } from 'firebase/auth';
 
 // 导入配置
-import { API_CONFIG, UTILS } from './config';
+import { UTILS } from './config';
 import { safeLog } from './utils/logger';
 
 // 现在所有AI服务都通过Firebase Functions访问Vertex AI
@@ -13,81 +13,19 @@ import { safeLog } from './utils/logger';
 
 // 移除了占位符图像生成函数
 
-// 重试辅助函数 - 指数退避算法
-async function retryWithBackoff(asyncFn, maxRetries = 3, baseDelay = 1000, onRetry = null) {
-  let lastError;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await asyncFn();
-    } catch (error) {
-      lastError = error;
-      
-      // 如果是最后一次尝试，直接抛出错误
-      if (attempt === maxRetries) {
-        throw lastError;
-      }
-      
-      // 检查是否应该重试（某些错误不值得重试）
-      if (!shouldRetryError(error)) {
-        throw lastError;
-      }
-      
-      // 计算延迟时间（指数退避 + 随机抖动）
-      const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-      safeLog.debug(`Attempt ${attempt + 1} failed, retrying in ${delay.toFixed(0)}ms...`);
-      
-      // 调用重试回调
-      if (onRetry) {
-        onRetry(attempt + 1, error, delay);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError;
-}
+// 重试辅助函数已移除 - 现在直接失败不重试
 
-// 判断错误是否值得重试
-function shouldRetryError(error) {
-  // 不值得重试的错误类型
-  const nonRetryableErrors = [
-    'functions/unauthenticated',
-    'functions/permission-denied',
-    'functions/invalid-argument'
-  ];
-  
-  // 如果是这些错误，不要重试
-  if (nonRetryableErrors.includes(error.code)) {
-    return false;
-  }
-  
-  // 如果错误信息包含某些关键词，不要重试
-  const nonRetryableMessages = [
-    'quota exceeded',
-    'authentication failed',
-    'invalid credentials'
-  ];
-  
-  const errorMessage = error.message ? error.message.toLowerCase() : '';
-  if (nonRetryableMessages.some(msg => errorMessage.includes(msg))) {
-    return false;
-  }
-  
-  // 其他错误可以重试
-  return true;
-}
+// 错误重试逻辑已移除
 
 // 使用Imagen 3或4生成图像（通过Firebase Functions）- 智能多角色场景管理  
-export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '1:1', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', onProgress = null) {
+export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '1:1', pageData = {}, allCharacters = {}, artStyle = '儿童绘本插画风格', model = 'imagen4-fast', onProgress = null) {
   const attemptGeneration = async () => {
     const { sceneCharacters = [], sceneType = '主角场景' } = pageData;
     
-    // 根据配置动态选择函数名
-    const functionName = UTILS.getImageGenerationFunction(); 
+    // 使用统一的generateImage函数，支持多模型
+    const functionName = 'generateImage';
     
-    safeLog.debug(UTILS.formatLogMessage(pageIndex, `Generating image - Function: ${functionName}, Version: ${API_CONFIG.IMAGEN_API_VERSION}`));
+    safeLog.debug(UTILS.formatLogMessage(pageIndex, `Generating image - Function: ${functionName}, Model: ${model}`));
     safeLog.debug(`Scene: ${sceneType}, Characters: [${sceneCharacters.join(', ')}]`);
 
     const generateImage = httpsCallable(functions, functionName);
@@ -138,6 +76,7 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
       prompt: enhancedPrompt,
       pageIndex: pageIndex,
       aspectRatio: aspectRatio,
+      model: model, // 添加模型参数
       seed: 42 + pageIndex, // 重新启用seed参数获得一致的图像生成
       maxRetries: 0, // 移除重试，直接失败
       // 新增的 Imagen 3 参数
@@ -148,24 +87,24 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
       negativePrompt: enhancedNegativePrompt // 增强的负向提示词，明确排除文字
     };
 
-    // Record scene type and character information
+    // Record scene type and character information with model info
     if (onProgress) {
       const characterInfo = sceneCharacters.length > 0 ? sceneCharacters.join(', ') : 'no characters';
-      onProgress(`Generating page ${pageIndex + 1} illustration - ${sceneType}, characters: ${characterInfo}`, 'image');
+      onProgress(`Generating page ${pageIndex + 1} illustration using ${model} - ${sceneType}, characters: ${characterInfo}`, 'image');
     }
-    safeLog.debug(`Page ${pageIndex + 1}: ${sceneType} - Characters: [${sceneCharacters.join(', ')}]`);
+    safeLog.debug(`Page ${pageIndex + 1}: ${sceneType} - Characters: [${sceneCharacters.join(', ')}] - Model: ${model}`);
     
     // Send image generation request
     if (onProgress) {
-      onProgress(UTILS.formatLogMessage(pageIndex, `Calling image generation API to generate image...`), 'image');
+      onProgress(UTILS.formatLogMessage(pageIndex, `Calling ${model} API to generate image...`), 'image');
     }
     
     const result = await generateImage(requestData);
     
     if (result.data && result.data.success && result.data.imageUrl) {
-      safeLog.debug(UTILS.formatLogMessage(pageIndex, 'image generated successfully'));
+      safeLog.debug(UTILS.formatLogMessage(pageIndex, `image generated successfully using ${model}`));
       if (onProgress) {
-        onProgress(UTILS.formatLogMessage(pageIndex, 'illustration generated successfully!'), 'success');
+        onProgress(UTILS.formatLogMessage(pageIndex, `illustration generated successfully using ${model}!`), 'success');
       }
       return result.data.imageUrl;
     } else {
@@ -178,31 +117,162 @@ export async function generateImageWithImagen(prompt, pageIndex, aspectRatio = '
     // 直接调用图像生成，不进行重试
     return await attemptGeneration();
   } catch (error) {
-    safeLog.error(`Error generating page ${pageIndex + 1} image:`, error);
+    safeLog.error(`Error generating page ${pageIndex + 1} image with ${model}:`, error);
     
-    // 提供详细的错误信息
-    let errorMessage = '';
-    if (error.code === 'functions/unauthenticated') {
-      errorMessage = 'Firebase authentication error';
-      safeLog.error('Firebase authentication error, please ensure you are logged in');
-    } else if (error.code === 'functions/permission-denied') {
-      errorMessage = 'Permission denied';
-      safeLog.error('Permission denied, please check Firebase rules');
-    } else if (error.code === 'functions/internal') {
-      errorMessage = 'Server internal error';
-      safeLog.error('Server internal error');
-    } else {
-      errorMessage = error.message || 'Unknown error';
-    }
+    // 简化错误处理逻辑
+    const errorInfo = parseGenerationError(error, model, pageIndex);
     
     if (onProgress) {
-      onProgress(`Page ${pageIndex + 1} image generation failed: ${errorMessage}`, 'error');
+      onProgress(`Page ${pageIndex + 1} image generation failed (${model}): ${errorInfo.message}`, 'error');
     }
     
     // 直接抛出错误，不再使用占位符图像
-    safeLog.debug(`Image generation failed, throwing error instead of using placeholder...`);
-    throw new Error(errorMessage);
+    safeLog.debug(`Image generation failed with ${model}, throwing error instead of using placeholder...`);
+    throw errorInfo.enhancedError;
   }
+}
+
+// 新增：简化的错误解析函数
+function parseGenerationError(error, model, pageIndex) {
+  let errorMessage = 'Unknown error';
+  let errorType = 'unknown';
+  let errorDetails = '';
+  
+  // 首先检查是否是 RAI 过滤错误
+  const raiInfo = extractRaiInfo(error);
+  if (raiInfo) {
+    return {
+      message: raiInfo.message,
+      enhancedError: createEnhancedError(raiInfo.message, 'safety_filter', raiInfo.details, model, error)
+    };
+  }
+  
+  // 处理其他类型的错误
+  if (error.code === 'functions/unauthenticated') {
+    errorMessage = 'Firebase authentication error';
+    errorType = 'auth';
+    errorDetails = 'Please ensure you are logged in';
+  } else if (error.code === 'functions/permission-denied') {
+    errorMessage = 'Permission denied';
+    errorType = 'permission';
+    errorDetails = 'Check Firebase rules configuration';
+  } else if (error.code === 'functions/deadline-exceeded') {
+    errorMessage = 'Request timeout';
+    errorType = 'timeout';
+    errorDetails = 'The generation request exceeded the time limit';
+  } else if (error.code === 'functions/internal') {
+    errorMessage = 'Server internal error';
+    errorType = 'server';
+    errorDetails = error.details?.error || error.message || 'Unknown server error';
+  } else {
+    errorMessage = error.message || 'Unknown error';
+    errorDetails = error.message || 'An unexpected error occurred';
+  }
+  
+  return {
+    message: errorMessage,
+    enhancedError: createEnhancedError(errorMessage, errorType, errorDetails, model, error)
+  };
+}
+
+// 新增：专门提取RAI信息的函数
+function extractRaiInfo(error) {
+  // 检查多个可能的 RAI 信息来源
+  let raiReason = null;
+  let raiDetails = null;
+  
+  // 方式1：直接在 error.details 中
+  if (error.details?.raiReason && error.details.raiReason !== 'Unknown') {
+    raiReason = error.details.raiReason;
+    raiDetails = error.details.detailedRaiInfo;
+  }
+  
+  // 方式2：在错误消息中查找RAI信息
+  if (!raiReason && error.message) {
+    const raiMatch = error.message.match(/RAI[^:]*:\s*([^,\n]+)/i);
+    if (raiMatch) {
+      raiReason = raiMatch[1].trim();
+    }
+  }
+  
+  // 方式3：检查是否是内容过滤的通用指标
+  if (!raiReason && error.message?.includes('No image data found') && error.details?.raiReason) {
+    raiReason = error.details.raiReason;
+    raiDetails = error.details.detailedRaiInfo;
+  }
+  
+  if (!raiReason) {
+    return null;
+  }
+  
+  // 记录原始RAI信息到调试日志
+  safeLog.debug('RAI filter detected:', {
+    reason: raiReason,
+    details: raiDetails
+  });
+  
+  // 根据RAI原因生成用户友好的错误信息
+  const raiLower = raiReason.toLowerCase();
+  let message = 'Content was filtered by safety policies';
+  let details = 'Content does not meet safety guidelines';
+  
+  if (raiLower.includes('copyright') || raiLower.includes('recitation')) {
+    message = 'Content blocked due to copyright concerns';
+    details = 'The prompt may reference copyrighted characters, brands, or artwork. Try using original descriptions instead of referencing specific works.';
+  } else if (raiLower.includes('hate') || raiLower.includes('discrimination')) {
+    message = 'Content filtered for hate speech';
+    details = 'The prompt may contain hate speech or discriminatory language. Please use respectful and inclusive language.';
+  } else if (raiLower.includes('violence') || raiLower.includes('harmful')) {
+    message = 'Content filtered for violence';
+    details = 'The prompt may contain violent or harmful imagery. Try focusing on peaceful, positive scenes instead.';
+  } else if (raiLower.includes('sexual') || raiLower.includes('adult')) {
+    message = 'Content filtered for sexual content';
+    details = 'The prompt may contain sexual or adult material. Please use family-friendly descriptions.';
+  } else if (raiLower.includes('dangerous')) {
+    message = 'Content filtered for dangerous activities';
+    details = 'The prompt may promote dangerous or harmful activities. Try focusing on safe, positive activities.';
+  } else if (raiLower.includes('safety') || raiLower.includes('blocked') || raiLower.includes('filter')) {
+    message = 'Content filtered by safety policies';
+    details = 'The prompt does not meet safety guidelines. Try rephrasing with different wording.';
+  } else {
+    // 对于不明确的RAI原因，尝试提取更多信息
+    message = 'Content filtered by AI safety policies';
+    
+    // 尝试从RAI原因中提取更具体的信息
+    if (raiReason.includes('SPII') || raiReason.includes('personal information')) {
+      details = 'The prompt may contain personal information. Avoid using specific names, addresses, or personal details.';
+    } else if (raiReason.includes('medical') || raiReason.includes('health')) {
+      details = 'The prompt may contain medical or health-related content that requires caution. Try using general descriptions instead.';
+    } else if (raiReason.includes('political') || raiReason.includes('controversial')) {
+      details = 'The prompt may contain political or controversial content. Try focusing on neutral, non-political themes.';
+    } else {
+      // 直接显示过滤的原因，但清理掉support code
+      const cleanReason = raiReason.replace(/Support codes?:\s*\d+/gi, '').trim();
+      if (cleanReason && cleanReason !== 'Unknown') {
+        details = `The prompt was filtered: ${cleanReason}. Try rephrasing with different wording.`;
+      } else {
+        details = 'The prompt does not meet safety guidelines. Try rephrasing with different wording.';
+      }
+    }
+  }
+  
+  // 不再显示support code
+  
+  return {
+    message: message,
+    details: details,
+    originalReason: raiReason
+  };
+}
+
+// 新增：创建增强错误对象的辅助函数
+function createEnhancedError(message, type, details, model, originalError) {
+  const enhancedError = new Error(message);
+  enhancedError.type = type;
+  enhancedError.details = details;
+  enhancedError.model = model;
+  enhancedError.originalError = originalError;
+  return enhancedError;
 }
 
 // 新增：流式故事生成函数
