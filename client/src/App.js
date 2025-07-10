@@ -12,8 +12,10 @@ import 'react-toastify/dist/ReactToastify.css';
 import PptxGenJS from 'pptxgenjs';
 import stateManager from './stateManager';
 import { safeLog } from './utils/logger';
+import { useNavigate } from 'react-router-dom';
 
 function App() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true); // 认证加载状态
   const appVersion = process.env.REACT_APP_VERSION || 'v0.2.2';

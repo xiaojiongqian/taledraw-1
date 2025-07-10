@@ -69,7 +69,7 @@ const PaymentForm = ({
 
   // 初始化嵌入式结账
   useEffect(() => {
-    safeLog.log('PaymentForm', 'useEffect...', '初始化状态:', isCheckoutInitialized); 
+    safeLog.debug('PaymentForm', 'useEffect...', '初始化状态:', isCheckoutInitialized); 
     
     const initializeCheckout = async () => {
       try {
@@ -83,13 +83,13 @@ const PaymentForm = ({
         
         // 如果已经初始化过，不再重复初始化
         if (isCheckoutInitialized) {
-          safeLog.log('PaymentForm', '已经初始化过，跳过初始化');
+          safeLog.debug('PaymentForm', '已经初始化过，跳过初始化');
           setLoading(false);
           return;
         }
         
         setLoading(true);
-        safeLog.log('PaymentForm', '初始化嵌入式结账...'); 
+        safeLog.debug('PaymentForm', '初始化嵌入式结账...'); 
         
         // 初始化结账
         await stripeService.initializeCheckout('#checkout-element', priceId);
@@ -118,7 +118,7 @@ const PaymentForm = ({
     
     // 组件卸载时清理
     return () => {
-      safeLog.log('PaymentForm', '卸载组件...'); 
+      safeLog.debug('PaymentForm', '卸载组件...'); 
       isMounted.current = false; // 标记组件已卸载
       window.removeEventListener('checkout-complete', handleSuccess);
       // 注意：不在这里重置 isCheckoutInitialized，因为我们希望保持初始化状态

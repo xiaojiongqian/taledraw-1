@@ -22,8 +22,8 @@ export const BASE_URL = IS_PRODUCTION
 export const STRIPE_CONFIG = {
   PUBLISHABLE_KEY: process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || 'pk_test_51RiV0qH1NCrMVCYNVVfKwgQwwBmSZTqtgagTSoG6pXu6diaXUKT1ZzAdGlOonLK3U3XkXHLyuDfdGddmetIzeJ1A00X9R9ciOl',
   PRICE_ID: process.env.REACT_APP_STRIPE_PRICE_ID || 'price_1RiV4lH1NCrMVCYNxZgC4bHN',
-  SUCCESS_URL: process.env.REACT_APP_STRIPE_SUCCESS_URL || `${BASE_URL}/success`,
-  CANCEL_URL: process.env.REACT_APP_STRIPE_CANCEL_URL || `${BASE_URL}/cancel`
+  SUCCESS_URL: process.env.REACT_APP_STRIPE_SUCCESS_URL || `${BASE_URL}/payment-result?status=success&session_id={CHECKOUT_SESSION_ID}`,
+  CANCEL_URL: process.env.REACT_APP_STRIPE_CANCEL_URL || `${BASE_URL}/payment-result?status=canceled`
 };
 
 // === 工具函数 ===

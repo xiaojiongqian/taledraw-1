@@ -28,10 +28,10 @@ class StripeService {
    */
   async loadStripe() {
     if (!this.stripe) {
-      safeLog.log('加载Stripe.js...');
+      safeLog.debug('加载Stripe.js...');
       // 使用npm包加载Stripe
       this.stripe = await loadStripe(this.publishableKey);
-      safeLog.log('Stripe.js加载完成');
+      safeLog.debug('Stripe.js加载完成');
     }
     return this.stripe;
   }
@@ -55,7 +55,7 @@ class StripeService {
    */
   async createCheckoutSession(priceId) {
     try {
-      safeLog.log('创建结账会话...');
+      safeLog.debug('创建结账会话...');
       
       // 检查用户是否已登录
       const currentUser = auth.currentUser;
@@ -64,7 +64,7 @@ class StripeService {
         throw new Error('用户未登录');
       }
       
-      safeLog.log('当前用户:', currentUser.uid, currentUser.email);
+      safeLog.debug('当前用户:', currentUser.uid, currentUser.email);
       
       // 确保用户令牌是最新的
       await currentUser.getIdToken(true);
@@ -72,7 +72,7 @@ class StripeService {
       // 使用Firebase Functions调用
       const createCheckoutSessionFn = httpsCallable(functions, 'createCheckoutSession');
       
-      // 准备参数
+      // 准备参数，使用配置中的URL
       const params = {
         priceId,
         embeddedMode: true, // 使用嵌入式模式
@@ -80,15 +80,15 @@ class StripeService {
         cancelUrl: STRIPE_CONFIG.CANCEL_URL
       };
       
-      safeLog.log('调用Firebase Function: createCheckoutSession');
-      safeLog.log('参数:', params);
+      safeLog.debug('调用Firebase Function: createCheckoutSession');
+      safeLog.debug('参数:', params);
       
       // 调用Firebase Function
       const response = await createCheckoutSessionFn(params);
       
       // Firebase Functions返回的数据在response.data中
       const session = response.data;
-      safeLog.log('结账会话创建成功:', session);
+      safeLog.debug('结账会话创建成功:', session);
       return session;
     } catch (error) {
       safeLog.error('创建结账会话失败:', error);
@@ -110,7 +110,7 @@ class StripeService {
    */
   async initializeCheckout(elementSelector, priceId) {
     try {
-      safeLog.log('初始化嵌入式结账清理...');
+      safeLog.debug('初始化嵌入式结账清理...');
       // 清理之前的实例
       this.cleanup();
       
@@ -131,7 +131,7 @@ class StripeService {
 
       // 处理结账完成事件
       const onComplete = (result) => {
-        safeLog.log('结账完成:', result);
+        safeLog.debug('结账完成:', result);
         // 触发自定义事件，通知支付成功
         const event = new CustomEvent('checkout-complete', {
           detail: {
@@ -144,7 +144,7 @@ class StripeService {
         // TODO 结合服务端获取当前最新状态
       };
       
-      safeLog.log('初始化嵌入式结账...');
+      safeLog.debug('初始化嵌入式结账...');
       
       // 初始化嵌入式结账
       checkoutInstance = await this.stripe.initEmbeddedCheckout({
@@ -153,7 +153,7 @@ class StripeService {
       });
       
       // 挂载到DOM
-      safeLog.log('挂载结账表单到:', elementSelector);
+      safeLog.debug('挂载结账表单到:', elementSelector);
       checkoutInstance.mount(elementSelector);
       
       return checkoutInstance;
@@ -167,13 +167,13 @@ class StripeService {
    * 清理结账实例
    */
   cleanup() {
-    safeLog.log('StripeService', 'cleanup');
+    safeLog.debug('StripeService', 'cleanup');
     try {
       if (checkoutInstance) {
-        safeLog.log('卸载结账表单...');
+        safeLog.debug('卸载结账表单...');
         checkoutInstance.unmount();
         checkoutInstance.destroy();
-        safeLog.log('结账实例已清理');
+        safeLog.debug('结账实例已清理');
         checkoutInstance = null;
       }
       

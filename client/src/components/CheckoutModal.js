@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import PaymentForm from './PaymentForm';
 import './CheckoutModal.css';
 
@@ -12,6 +13,7 @@ import './CheckoutModal.css';
 const CheckoutModal = ({ priceId, onSuccess, onClose }) => {
   // 创建一个引用，用于访问 PaymentForm 的 handleClose 方法
   const paymentFormCloseRef = useRef(null);
+  const navigate = useNavigate();
 
   // 组件挂载时禁用页面滚动
   useEffect(() => {
@@ -28,11 +30,14 @@ const CheckoutModal = ({ priceId, onSuccess, onClose }) => {
   const handleSuccess = () => {
     if (onSuccess) onSuccess();
     onClose();
+    // Stripe会自动重定向到配置的成功URL
   };
   
   // 处理关闭模态框
   const handleClose = () => {
     if (onClose) onClose();
+    // 导航到支付结果页面，状态为取消
+    navigate('/payment-result?status=canceled');
   };
 
   // 处理背景点击关闭模态框
@@ -42,6 +47,8 @@ const CheckoutModal = ({ priceId, onSuccess, onClose }) => {
       paymentFormCloseRef.current();
     }
     if (onClose) onClose();
+    // 导航到支付结果页面，状态为取消
+    navigate('/payment-result?status=canceled');
   };
 
   // 创建模态框内容
