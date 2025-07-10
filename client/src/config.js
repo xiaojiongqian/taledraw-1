@@ -6,9 +6,7 @@ export const LOCATION = 'us-central1';
 
 // === API 配置 ===
 export const API_CONFIG = {
-  IMAGEN_API_VERSION: process.env.REACT_APP_IMAGEN_API_VERSION || '3',
-  IMAGEN3_REGION: 'us-central1',
-  IMAGEN4_REGION: 'us-central1'
+  IMAGEN_REGION: 'us-central1'
 };
 
 // 环境配置
@@ -30,14 +28,7 @@ export const STRIPE_CONFIG = {
 export const UTILS = {
   // 获取 Imagen 区域
   getImagenRegion: () => {
-    return API_CONFIG.IMAGEN_API_VERSION === '4' 
-      ? API_CONFIG.IMAGEN4_REGION 
-      : API_CONFIG.IMAGEN3_REGION;
-  },
-
-  // 获取图像生成函数名称
-  getImageGenerationFunction: () => {
-    return API_CONFIG.IMAGEN_API_VERSION === '4' ? 'generateImageV4' : 'generateImage';
+    return API_CONFIG.IMAGEN_REGION;
   },
 
   // 构建 Firebase 函数 URL
@@ -58,7 +49,7 @@ export const UTILS = {
   },
 
   // 错误消息格式化
-  formatErrorMessage: (message, apiVersion = API_CONFIG.IMAGEN_API_VERSION) => {
+  formatErrorMessage: (message) => {
     return `Image generation API returned error: ${message}`;
   }
 };

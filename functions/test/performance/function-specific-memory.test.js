@@ -276,52 +276,7 @@ describe('各函数专门内存使用分析', function() {
       console.log('✅ generateImage function memory analysis completed');
     });
 
-    it('generateImageV4 函数内存使用分析 (当前: 1GB)', async () => {
-      const wrapped = testEnv.wrap(functions.generateImageV4);
-      
-      monitor.startMonitoring(50);
-      
-      // 测试V4特有的参数组合
-      const testCases = [
-        {
-          prompt: 'A cute cartoon character',
-          pageIndex: 0,
-          aspectRatio: '1:1',
-          seed: 42
-        },
-        {
-          prompt: 'A landscape painting',
-          pageIndex: 1,
-          aspectRatio: '16:9',
-          seed: 123,
-          sampleCount: 1
-        },
-        {
-          prompt: testImagePrompts.complex,
-          pageIndex: 2,
-          aspectRatio: '9:16',
-          safetyFilterLevel: 'block_most'
-        }
-      ];
-      
-      for (const testCase of testCases) {
-        const req = createMockRequest(testCase);
-        
-        try {
-          await wrapped(req);
-        } catch (error) {
-          // Expected authentication or API errors
-        }
-        
-        await waitFor(100);
-      }
-      
-      monitor.stopMonitoring();
-      const result = monitor.analyzeForFunction('generateImageV4', 1024);
-      if (result) results.push(result);
-      
-      console.log('✅ generateImageV4 function memory analysis completed');
-    });
+
   });
 
 

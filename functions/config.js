@@ -8,8 +8,12 @@ const STORAGE_MODE = 'cloud_storage'; // 默认存储模式
 // === API 配置 ===
 const API_CONFIG = {
   GEMINI_MODEL: 'gemini-2.5-flash',
-  IMAGEN3_MODEL: 'imagen-3.0-generate-002',
-  IMAGEN4_MODEL: 'imagen-4.0-generate-preview-06-06',
+  IMAGEN_MODELS: {
+    'imagen3': 'imagen-3.0-generate-002',
+    'imagen4': 'imagen-4.0-generate-preview-06-06',
+    'imagen4-fast': 'imagen-4.0-fast-generate-preview-06-06',
+  },
+  DEFAULT_IMAGEN_MODEL: 'imagen4-fast',
   MAX_OUTPUT_TOKENS: 32768,
   DEFAULT_TIMEOUT: 900, // 15 minutes
   DEFAULT_MEMORY: '1GiB'
@@ -40,9 +44,9 @@ const PROMPTS = {
   STORY_GENERATION: (pageCount) => `
 You are a professional children's storybook editor and creative assistant. Your task is to transform a user-submitted story into a complete ${pageCount}-page illustrated storybook with consistent character design and child-friendly content.
 
-**CRITICAL ENGLISH REQUIREMENT**: ALL image generation prompts (imagePrompt, scenePrompt, characterPrompts) MUST be written in ENGLISH ONLY. This is absolutely mandatory for optimal image generation quality. Even if the input story is in another language, these specific fields must always be in English.
+**CRITICAL ENGLISH REQUIREMENT**: ALL image generation prompts (imagePrompt, scenePrompt, characterPrompts) MUST be written in ENGLISH ONLY. This is  mandatory for optimal image generation quality. Even if the input story is in another language, these specific fields must always be in English.
 
-**IMPORTANT**: Your response must be concise and stay within 30,000 tokens total. Keep descriptions focused and avoid unnecessary verbosity.
+**IMPORTANT**: Your response must be concise and stay within 36,000 tokens total. Keep descriptions focused and avoid unnecessary verbosity.
 
 ## WORKFLOW OVERVIEW
 
@@ -52,7 +56,7 @@ Analyze the complete story structure:
 - Identify key plot points and turning points
 - Map story arc: beginning → development → climax → resolution
 - Catalog all important characters and settings
-- Ensure NO content will be omitted (cover 100% of original story)
+- Ensure NO important content will be omitted (cover 100% of original story)
 
 ### STEP 2: CHARACTER CONSISTENCY MANAGEMENT
 For EACH main character appearing in the story:
@@ -132,7 +136,7 @@ Return a single valid JSON object with this exact structure:
 - Maintain character visual consistency through detailed character sheets
 - Apply content safety transformations while preserving story meaning
 - Ensure each page has unique, meaningful content (no filler or repetition)
-- **OUTPUT LENGTH CONSTRAINT**: Keep the total JSON output concise and within 30,000 tokens. Prioritize essential content over verbose descriptions. Each page text should be 2-4 sentences maximum. Image prompts should be detailed but concise (under 200 words each).
+- **OUTPUT LENGTH CONSTRAINT**: Keep the total JSON output concise. Prioritize essential content over verbose descriptions. Each page text should be 2-4 sentences maximum. Image prompts should be detailed but concise (under 200 words each).
 
 ## ENGLISH PROMPT EXAMPLES
 Good imagePrompt examples:
@@ -145,8 +149,6 @@ Good imagePrompt examples:
   "clothing": "Red and white striped t-shirt, blue denim shorts, white sneakers with blue laces, small brown backpack",
   "personality": "Curious and adventurous, confident posture, tends to lean forward when interested, expressive hand gestures"
 }
-
-**FINAL REMINDER**: imagePrompt, scenePrompt, and characterPrompts fields MUST be written in English regardless of input language. This is non-negotiable for image generation quality.
 
 Analyze this story and transform it according to the above requirements:
 `
