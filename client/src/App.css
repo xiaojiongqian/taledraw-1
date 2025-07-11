@@ -499,8 +499,8 @@ body {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  background-color: #708090;
-  border: 1px solid #5a6b7a;
+  background-color: white;
+  border: 1px solid #e0e0e0;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 100;
@@ -510,8 +510,8 @@ body {
 }
 
 .save-options .btn-save-option {
-  background-color: #708090;
-  color: white;
+  background-color: white;
+  color: #555;
   border: none;
   padding: 8px 16px;
   text-align: center;
@@ -523,7 +523,7 @@ body {
 }
 
 .save-options .btn-save-option:first-child {
-  border-bottom: 1px solid #8a9ba8;
+  border-bottom: 1px solid #e0e0e0;
 }
 
   .save-options .btn-save-option:hover {

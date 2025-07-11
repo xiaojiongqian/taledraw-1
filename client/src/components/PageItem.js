@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './PageItem.css';
 import { safeLog } from '../utils/logger';
 
@@ -21,6 +21,8 @@ const PageItem = ({
   const [editedText, setEditedText] = useState(page.text || '');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(page.title || '');
+
+  const imageRef = useRef(null);
 
   // Sync page prompt changes to local edit state
   useEffect(() => {
@@ -124,52 +126,58 @@ const PageItem = ({
   };
 
   const handleImageClick = () => {
-    if (page.image && !imageLoadError) {
-      // First, get image dimensions to calculate proper window aspect ratio
-      const img = new Image();
-      img.onload = function() {
-        const imageWidth = this.naturalWidth;
-        const imageHeight = this.naturalHeight;
-        const imageAspectRatio = imageWidth / imageHeight;
-        
-        // Calculate window size based on screen and image aspect ratio
-        const screenWidth = window.screen.availWidth;
-        const screenHeight = window.screen.availHeight;
-        const maxWidth = Math.min(screenWidth * 0.9, 1200);
-        const maxHeight = Math.min(screenHeight * 0.9, 900);
-        
-        let windowWidth, windowHeight;
-        
-        if (imageAspectRatio > 1) {
-          // Landscape image
-          windowWidth = maxWidth;
-          windowHeight = windowWidth / imageAspectRatio;
-          if (windowHeight > maxHeight) {
-            windowHeight = maxHeight;
-            windowWidth = windowHeight * imageAspectRatio;
-          }
-        } else {
-          // Portrait or square image
+    if (page.image && !imageLoadError && imageRef.current) {
+      const img = imageRef.current;
+      const imageWidth = img.naturalWidth;
+      const imageHeight = img.naturalHeight;
+      
+      if (imageWidth === 0 || imageHeight === 0) {
+        // This can happen if the image is not fully loaded yet, though unlikely with this logic.
+        // As a fallback, let's not open the window or use default dimensions.
+        safeLog('Image dimensions are not yet available.');
+        return;
+      }
+
+      const imageAspectRatio = imageWidth / imageHeight;
+      
+      // Calculate window size based on screen and image aspect ratio
+      const screenWidth = window.screen.availWidth;
+      const screenHeight = window.screen.availHeight;
+      const maxWidth = Math.min(screenWidth * 0.9, 1200);
+      const maxHeight = Math.min(screenHeight * 0.9, 900);
+      
+      let windowWidth, windowHeight;
+      
+      if (imageAspectRatio > 1) {
+        // Landscape image
+        windowWidth = maxWidth;
+        windowHeight = windowWidth / imageAspectRatio;
+        if (windowHeight > maxHeight) {
           windowHeight = maxHeight;
           windowWidth = windowHeight * imageAspectRatio;
-          if (windowWidth > maxWidth) {
-            windowWidth = maxWidth;
-            windowHeight = windowWidth / imageAspectRatio;
-          }
         }
+      } else {
+        // Portrait or square image
+        windowHeight = maxHeight;
+        windowWidth = windowHeight * imageAspectRatio;
+        if (windowWidth > maxWidth) {
+          windowWidth = maxWidth;
+          windowHeight = windowWidth / imageAspectRatio;
+        }
+      }
+      
+      // Center the window
+      const left = (screenWidth - windowWidth) / 2;
+      const top = (screenHeight - windowHeight) / 2;
+      
+      // Open window with calculated dimensions
+      const newWindow = window.open('', '_blank', `width=${Math.round(windowWidth)},height=${Math.round(windowHeight)},left=${Math.round(left)},top=${Math.round(top)},scrollbars=no,resizable=yes,toolbar=no,location=no,status=no,menubar=no,titlebar=no,directories=no`);
+      
+      if (newWindow) {
+        const imageName = `Page_${index + 1}_Illustration.png`;
+        const pageTitle = page.title ? `${index + 1}. ${page.title}` : `Page ${index + 1}`;
         
-        // Center the window
-        const left = (screenWidth - windowWidth) / 2;
-        const top = (screenHeight - windowHeight) / 2;
-        
-        // Open window with calculated dimensions
-        const newWindow = window.open('', '_blank', `width=${Math.round(windowWidth)},height=${Math.round(windowHeight)},left=${Math.round(left)},top=${Math.round(top)},scrollbars=no,resizable=yes,toolbar=no,location=no,status=no,menubar=no,titlebar=no,directories=no`);
-        
-        if (newWindow) {
-          const imageName = `Page_${index + 1}_Illustration.png`;
-          const pageTitle = page.title ? `${index + 1}. ${page.title}` : `Page ${index + 1}`;
-          
-          newWindow.document.write(`
+        newWindow.document.write(`
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -251,364 +259,83 @@ const PageItem = ({
                 color: white;
               }
               .btn-save:hover {
-                background: var(--primary-color-hover);
-                transform: scale(1.05);
+                background: var(--primary-color-dark);
               }
               .btn-close {
-                background: var(--gray-color);
+                background: rgba(255, 255, 255, 0.2);
                 color: white;
               }
               .btn-close:hover {
-                background: var(--gray-color-hover);
-                transform: scale(1.05);
+                background: rgba(255, 255, 255, 0.3);
+              }
+              .hidden {
+                opacity: 0;
+                pointer-events: none;
               }
             </style>
           </head>
           <body>
             <div class="image-container">
-              <img src="${page.image}" alt="${pageTitle}" class="main-image" />
-            </div>
-            <div class="user-hint">
-              <small style="color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 12px; font-size: 11px;">
-                💡 Double-click to toggle fullscreen
-              </small>
-            </div>
-            <div class="controls">
-              <button class="btn btn-save" onclick="downloadImage(event)" onmousedown="event.stopPropagation()" onmouseup="event.stopPropagation()">Save</button>
-              <button class="btn btn-close" onclick="event.stopPropagation(); window.close()" onmousedown="event.stopPropagation()" onmouseup="event.stopPropagation()">Close</button>
+              <img src="${page.image}" class="main-image" alt="Full screen image of ${pageTitle}">
             </div>
             
+            <div class="user-hint">
+              <p style="color: white; font-size: 13px;">Right-click or long-press to save the image.</p>
+            </div>
+
+            <div class="controls">
+              <a id="saveBtn" href="${page.image}" download="${imageName}" class="btn btn-save">Save</a>
+              <button id="closeBtn" class="btn btn-close">Close</button>
+            </div>
+
             <script>
-              // Flag to prevent fullscreen during save operation
-              let isSaving = false;
-              
-              // Initialize window without auto-fullscreen
-              window.addEventListener('load', function() {
-                // Hide scrollbars and force focus
-                document.body.style.overflow = 'hidden';
-                window.focus();
-                
-                // Optional: Try fullscreen after a longer delay to avoid conflicts
-                // Note: Auto-fullscreen is now more conservative
-                setTimeout(function() {
-                  if (!document.querySelector('.controls').matches(':hover') && 
-                      !isSaving && 
-                      !isRightClickActive &&
-                      !document.fullscreenElement) {
-                    const elem = document.documentElement;
-                    if (elem.requestFullscreen) {
-                      elem.requestFullscreen().catch(function() {
-                        // Fullscreen failed, that's ok
-                        safeLog.debug('Auto-fullscreen not available or denied');
-                      });
-                    }
-                  } else {
-                    safeLog.debug('Auto-fullscreen skipped due to active operation');
-                  }
-                }, 2000); // Increased delay to 2 seconds
+              document.getElementById('closeBtn').addEventListener('click', () => {
+                window.close();
               });
               
-              // Toggle fullscreen on double-click anywhere except buttons and controls
-              document.addEventListener('dblclick', function(e) {
-                // Don't trigger fullscreen if:
-                // - Currently saving
-                // - Right-click operation is active
-                // - Double-clicking on buttons or control area
-                // - Clicking on any interactive element
-                if (isSaving || 
-                    isRightClickActive ||
-                    e.target.tagName === 'BUTTON' || 
-                    e.target.closest('.controls') || 
-                    e.target.closest('.user-hint') ||
-                    e.target.closest('button') ||
-                    e.target.classList.contains('btn')) {
-                  safeLog.debug('Double-click ignored due to active operation or UI element');
-                  return;
-                }
-                
-                // Prevent event bubbling
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Check current fullscreen state and toggle accordingly
-                if (document.fullscreenElement) {
-                  // Currently in fullscreen, exit fullscreen
-                  document.exitFullscreen().catch(function(err) {
-                    safeLog.debug('Exit fullscreen failed:', err);
-                  });
-                  safeLog.debug('Exiting fullscreen via double-click');
+              // In some browsers, programmatically closing a window only works if it was opened by a script.
+              // We add a small delay to ensure the UI is responsive.
+              setTimeout(() => {
+                if(window.opener) {
+                  // The window was opened by a script
                 } else {
-                  // Not in fullscreen, enter fullscreen
-                  const elem = document.documentElement;
-                  if (elem.requestFullscreen) {
-                    elem.requestFullscreen().catch(function(err) {
-                      safeLog.debug('Enter fullscreen failed:', err);
-                    });
-                    safeLog.debug('Entering fullscreen via double-click');
-                  }
+                  // Probably opened manually; hide the close button as it might not work.
+                  // document.getElementById('closeBtn').style.display = 'none';
                 }
-              });
+              }, 500);
+
+              // Auto-hide controls after a delay
+              let timeout;
+              const controls = document.querySelector('.controls');
+              const hint = document.querySelector('.user-hint');
               
-              async function downloadImage(event) {
-                // Set saving flag to prevent fullscreen
-                isSaving = true;
-                
-                // Prevent any event bubbling that might trigger fullscreen
-                if (event) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.stopImmediatePropagation();
-                }
-                
-                try {
-                  // Method 1: Try to get original cached image data (preserves original format)
-                  const response = await fetch('${page.image}', { 
-                    cache: 'force-cache'  // Force use of cache only
-                  });
-                  
-                  if (!response.ok) {
-                    throw new Error('Failed to get cached image');
-                  }
-                  
-                  const blob = await response.blob();
-                  
-                  // Get original file extension from URL or blob type
-                  const imageUrl = '${page.image}';
-                  let fileExtension = 'png'; // default
-                  
-                  // Try to determine extension from blob type
-                  if (blob.type === 'image/jpeg' || blob.type === 'image/jpg') {
-                    fileExtension = 'jpg';
-                  } else if (blob.type === 'image/png') {
-                    fileExtension = 'png';
-                  } else if (blob.type === 'image/webp') {
-                    fileExtension = 'webp';
-                  } else {
-                    // Try to extract from URL
-                    const urlExtMatch = imageUrl.match(/\\.(jpg|jpeg|png|webp|gif)(\\?|$)/i);
-                    if (urlExtMatch) {
-                      fileExtension = urlExtMatch[1].toLowerCase();
-                      if (fileExtension === 'jpeg') fileExtension = 'jpg';
-                    }
-                  }
-                  
-                  // Update filename with correct extension
-                  const baseFileName = '${imageName}'.replace(/\\.[^.]+$/, ''); // Remove extension
-                  const finalFileName = baseFileName + '.' + fileExtension;
-                  
-                  // Create download link with original format
-                  const url = window.URL.createObjectURL(blob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = finalFileName;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  window.URL.revokeObjectURL(url);
-                  
-                  safeLog.debug(\`Image downloaded from cache with original format: \${blob.type} (\${fileExtension})\`);
-                  safeLog.debug('Cache hit - no network request needed');
-                  
-                } catch (cacheError) {
-                  safeLog.warn('Cache-only download failed, trying Canvas method:', cacheError);
-                  
-                  try {
-                    // Method 2: Canvas fallback (converts to PNG but works offline)
-                    const imgElement = document.querySelector('.main-image');
-                    
-                    if (!imgElement || !imgElement.complete) {
-                      throw new Error('Image not loaded in page');
-                    }
-                    
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    canvas.width = imgElement.naturalWidth;
-                    canvas.height = imgElement.naturalHeight;
-                    ctx.drawImage(imgElement, 0, 0);
-                    
-                    canvas.toBlob(function(blob) {
-                      if (!blob) {
-                        safeLog.error('Canvas blob creation failed');
-                        return;
-                      }
-                      
-                      const url = window.URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = '${imageName}'; // Keep PNG extension for canvas method
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      window.URL.revokeObjectURL(url);
-                      
-                      safeLog.debug('Image downloaded via Canvas method (converted to PNG)');
-                    }, 'image/png', 1.0);
-                    
-                  } catch (canvasError) {
-                    safeLog.warn('Canvas download also failed, using network fallback:', canvasError);
-                    
-                    // Method 3: Network fallback
-                    try {
-                      const response = await fetch('${page.image}');
-                      if (!response.ok) {
-                        throw new Error(\`Network response was not ok: \${response.statusText}\`);
-                      }
-                      const blob = await response.blob();
-                      
-                      const url = window.URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = '${imageName}';
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      window.URL.revokeObjectURL(url);
-                      
-                      safeLog.debug('Image downloaded via network request (last resort)');
-                    } catch (fetchError) {
-                      safeLog.error('All download methods failed:', fetchError);
-                      alert('Download failed. Please try right-clicking the image and selecting "Save Image As..."');
-                    }
-                  }
-                } finally {
-                  // Reset saving flag after a short delay
-                  setTimeout(function() {
-                    isSaving = false;
-                  }, 500);
-                }
+              function showControls() {
+                controls.classList.remove('hidden');
+                hint.classList.remove('hidden');
               }
-              
-              // Prevent clicks on controls area from triggering fullscreen
-              document.querySelector('.controls').addEventListener('click', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-              });
-              
-              document.querySelector('.controls').addEventListener('mousedown', function(e) {
-                e.stopPropagation();
-              });
-              
-              document.querySelector('.controls').addEventListener('mouseup', function(e) {
-                e.stopPropagation();
-              });
-              
-              // Prevent clicks on hint area from triggering fullscreen
-              document.querySelector('.user-hint').addEventListener('click', function(e) {
-                e.stopPropagation();
-              });
-              
-              document.querySelector('.user-hint').addEventListener('dblclick', function(e) {
-                e.stopPropagation();
-              });
-              
-              // Auto-hide hint after 5 seconds
-              setTimeout(function() {
-                const hint = document.querySelector('.user-hint');
-                if (hint) {
-                  hint.style.opacity = '0';
-                  setTimeout(function() {
-                    hint.style.display = 'none';
-                  }, 300);
-                }
-              }, 5000);
-              
-              // Handle keyboard shortcuts
-              document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                  if (document.fullscreenElement) {
-                    document.exitFullscreen();
-                  } else {
-                    window.close();
-                  }
-                }
-                if (e.key === 'F11') {
-                  e.preventDefault();
-                  // Don't trigger F11 fullscreen during right-click operations
-                  if (isRightClickActive || isSaving) {
-                    safeLog.debug('F11 fullscreen blocked due to active operation');
-                    return;
-                  }
-                  
-                  if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen().catch(function(err) {
-                      safeLog.debug('F11 enter fullscreen failed:', err);
-                    });
-                  } else {
-                    document.exitFullscreen().catch(function(err) {
-                      safeLog.debug('F11 exit fullscreen failed:', err);
-                    });
-                  }
-                }
-                if (e.key === 's' || e.key === 'S') {
-                  e.preventDefault();
-                  downloadImage();
-                }
-              });
-              
-              // Allow context menu for user convenience (right-click to save image, etc.)
-              // Context menu is now enabled for better user experience
-              
-              // Flag to track right-click operations
-              let isRightClickActive = false;
-              
-              // Handle right-click context menu
-              document.addEventListener('contextmenu', function(e) {
-                // Allow context menu but set flag to prevent conflicts
-                isRightClickActive = true;
-                safeLog.debug('Right-click context menu opened');
-                
-                // Reset flag after a delay
-                setTimeout(function() {
-                  isRightClickActive = false;
-                  safeLog.debug('Right-click operation completed');
-                }, 2000);
-              });
-              
-              // Handle mouse events to prevent conflicts
-              document.addEventListener('mousedown', function(e) {
-                if (e.button === 2) { // Right mouse button
-                  isRightClickActive = true;
-                  safeLog.debug('Right mouse button pressed');
-                }
-              });
-              
-              document.addEventListener('mouseup', function(e) {
-                if (e.button === 2) { // Right mouse button
-                  // Keep the flag active a bit longer to prevent conflicts
-                  setTimeout(function() {
-                    isRightClickActive = false;
-                  }, 1000);
-                }
-              });
-              
-              // Reset flags when document visibility changes (e.g., tab switch)
-              document.addEventListener('visibilitychange', function() {
-                if (document.hidden) {
-                  // User switched away, reset states
-                  isRightClickActive = false;
-                  isSaving = false;
-                  safeLog.debug('Document hidden, resetting operation flags');
-                }
-              });
-              
-              // Reset flags when window loses focus
-              window.addEventListener('blur', function() {
-                isRightClickActive = false;
-                isSaving = false;
-                safeLog.debug('Window lost focus, resetting operation flags');
-              });
+
+              function hideControls() {
+                controls.classList.add('hidden');
+                hint.classList.add('hidden');
+              }
+
+              function resetTimer() {
+                clearTimeout(timeout);
+                showControls();
+                timeout = setTimeout(hideControls, 3000); // Hide after 3 seconds of inactivity
+              }
+
+              document.addEventListener('mousemove', resetTimer);
+              document.addEventListener('touchstart', resetTimer);
+              document.addEventListener('click', resetTimer);
+              resetTimer(); // Initial call
             </script>
           </body>
           </html>
         `);
-        newWindow.document.close();
+          newWindow.document.close();
         }
-      };
-      
-      // Set the image source to trigger the onload event
-      img.src = page.image;
-    }
+      }
   };
 
   const handleImageLoadError = () => {
@@ -839,6 +566,7 @@ const PageItem = ({
               ) : (
                 <>
                   <img 
+                    ref={imageRef}
                     src={page.image} 
                     alt={`${index + 1}. Illustration`}
                     onClick={handleImageClick}
@@ -846,7 +574,7 @@ const PageItem = ({
                     className="clickable-image"
                     title="Click to open in new window"
                   />
-                  {page.model && (
+                  {page.model && process.env.NODE_ENV === 'development' && (
                     <div className="image-model-badge">
                       {getModelDisplayName(page.model)}
                     </div>
