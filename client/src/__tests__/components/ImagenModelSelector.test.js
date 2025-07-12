@@ -175,7 +175,7 @@ describe('ImagenModelSelector', () => {
     rerender(
       <ImagenModelSelector 
         selectedModel="imagen4-fast"
-        onModelChange={null}
+        onModelChange={() => {}}
         disabled={false}
       />
     );

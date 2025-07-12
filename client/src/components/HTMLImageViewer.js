@@ -550,6 +550,9 @@ function initImageViewer() {
   console.log('Image viewer initialized with', window.pagesData.length, 'pages');
 }
 
+// 暴露HTMLImageViewer类到全局，便于测试
+window.HTMLImageViewer = HTMLImageViewer;
+
 // 页面加载完成后初始化
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initImageViewer);
