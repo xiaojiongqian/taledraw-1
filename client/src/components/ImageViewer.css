@@ -1,0 +1,552 @@
+/* 图像查看器样式 */
+
+/* 全屏覆盖层 */
+.image-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* 查看器容器 */
+.image-viewer-container {
+  width: 90%;
+  height: 90%;
+  max-width: 1400px;
+  background-color: white;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
+}
+
+/* 头部标题区域 */
+.viewer-header {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border-bottom: 1px solid #000000;
+  background-color: #000000;
+  position: relative;
+  padding: 0 20px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 2.0rem;
+  font-weight: 500;
+  line-height: 1.8;
+  color: #ffffff;
+  text-align: left;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 关闭按钮 */
+.close-button {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border: none;
+  background-color: transparent;
+  color: #ffffff;
+  font-size: 2rem;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.close-button:hover {
+  background-color: #333333;
+  color: #ffffff;
+}
+
+.close-button.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 内容区域 */
+.viewer-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 横向布局样式 */
+.viewer-content.landscape {
+  flex-direction: column;
+}
+
+.landscape .image-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 5px;
+  background-color: #000000;
+}
+
+.landscape .text-container {
+  height: auto;
+  max-height: 30%;
+  padding: 15px 40px;
+  background-color: #000000;
+  border-top: 1px solid #000000;
+  overflow-y: auto;
+}
+
+/* 纵向布局样式 */
+.viewer-content.portrait {
+  flex-direction: row;
+}
+
+.portrait .text-panel {
+  width: 35%;
+  padding: 20px;
+  background-color: #000000;
+  border-right: 1px solid #000000;
+  overflow-y: auto;
+}
+
+.portrait .image-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  overflow: hidden;
+  background-color: #000000;
+}
+
+/* 图片样式 */
+.image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-container img,
+.image-panel img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: opacity 0.3s ease;
+}
+
+/* 图片加载状态 */
+.image-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 10;
+}
+
+.image-loading .loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #333;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 10px;
+}
+
+.image-loading p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 文本样式 */
+.story-text {
+  font-size: 1.8rem;
+  line-height: 1.8;
+  color: #ffffff;
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 加载状态 */
+.loading-spinner {
+  font-size: 1.2rem;
+  color: #666;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 错误状态 */
+.image-error,
+.no-image {
+  text-align: center;
+  color: #666;
+  padding: 20px;
+}
+
+.image-error p,
+.no-image p {
+  margin: 10px 0;
+}
+
+.error-prompt,
+.image-prompt {
+  font-size: 0.9rem;
+  color: #999;
+  font-style: italic;
+}
+
+/* 导航提示 */
+.navigation-hints {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  background-color: #f8f9fa;
+  border-top: 1px solid #e0e0e0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.nav-hint {
+  min-width: 100px;
+  text-align: center;
+}
+
+.page-indicator {
+  font-weight: 500;
+  color: #333;
+}
+
+/* 导航按钮 */
+.nav-button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 50px;
+  height: 50px;
+  border: none;
+  background-color: rgba(0, 0, 0, 0.3);
+  color: white;
+  font-size: 2rem;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.3s ease;
+  opacity: 0.7;
+}
+
+.nav-button:hover {
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 1;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.nav-button-prev {
+  left: 20px;
+}
+
+.nav-button-next {
+  right: 20px;
+}
+
+
+
+/* 全屏模式样式 */
+.image-viewer-container:fullscreen {
+  background-color: #000;
+}
+
+.image-viewer-container:fullscreen .viewer-header {
+  background-color: #000000;
+  border-color: #000000;
+  padding: 0 20px;
+}
+
+.image-viewer-container:fullscreen .page-title {
+  color: #ffffff;
+  font-size: 2.2rem;
+}
+
+.image-viewer-container:fullscreen .navigation-hints {
+  background-color: rgba(0, 0, 0, 0.8);
+  border-color: #333;
+  color: #ccc;
+}
+
+.image-viewer-container:fullscreen .page-indicator {
+  color: white;
+}
+
+.image-viewer-container:fullscreen .close-button {
+  color: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.image-viewer-container:fullscreen .close-button.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-viewer-container:fullscreen .close-button:hover {
+  background-color: #333333;
+  color: #ffffff;
+}
+
+.image-viewer-container:fullscreen .text-container,
+.image-viewer-container:fullscreen .text-panel {
+  background-color: #000000;
+}
+
+.image-viewer-container:fullscreen .story-text {
+  font-size: 1.8rem;
+}
+
+.image-viewer-container:fullscreen .landscape .image-container,
+.image-viewer-container:fullscreen .portrait .image-panel {
+  padding: 5px;
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .image-viewer-container {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .viewer-header {
+    height: 70px;
+    padding: 0 10px;
+    background-color: #000000;
+    border-bottom: 1px solid #000000;
+  }
+
+  .page-title {
+    font-size: 2.2rem;
+    color: #ffffff;
+  }
+
+  /* 移动端强制使用纵向布局 */
+  .viewer-content {
+    flex-direction: column !important;
+  }
+
+  .portrait .text-panel,
+  .landscape .text-container {
+    width: 100%;
+    height: 30%;
+    border-right: none;
+    border-bottom: 1px solid #000000;
+    padding: 10px;
+    background-color: #000000;
+  }
+
+  .portrait .image-panel,
+  .landscape .image-container {
+    width: 100%;
+    flex: 1;
+    padding: 3px;
+  }
+
+  .story-text {
+    font-size: 1.8rem;
+    color: #ffffff;
+  }
+
+  .navigation-hints {
+    height: 40px;
+    padding: 0 20px;
+    font-size: 0.85rem;
+  }
+
+  /* 移动端导航按钮调整 */
+  .nav-button {
+    width: 40px;
+    height: 40px;
+    font-size: 1.5rem;
+  }
+
+  .nav-button-prev {
+    left: 10px;
+  }
+
+  .nav-button-next {
+    right: 10px;
+  }
+
+
+
+  .close-button {
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    font-size: 1.5rem;
+    color: #ffffff;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .close-button:hover {
+    background-color: #333333;
+    color: #ffffff;
+  }
+
+  .close-button.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .image-viewer-container {
+    background-color: #1a1a1a;
+  }
+
+  .viewer-header,
+  .landscape .text-container,
+  .portrait .text-panel {
+    background-color: #000000;
+    border-color: #000000;
+  }
+
+  .landscape .image-container,
+  .portrait .image-panel {
+    background-color: #000000;
+  }
+
+  .page-title,
+  .story-text {
+    color: #ffffff;
+  }
+
+  .nav-hint,
+  .loading-spinner,
+  .image-error {
+    color: #ffffff;
+  }
+
+  .close-button {
+    color: #ffffff;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .close-button.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .close-button:hover {
+    background-color: #333333;
+    color: #ffffff;
+  }
+
+  .image-loading .loading-spinner {
+    border-color: #000000;
+    border-top-color: #ffffff;
+  }
+
+  .image-loading p {
+    color: #ffffff;
+  }
+}
+
+/* 焦点样式（用于键盘导航） */
+.image-viewer-overlay:focus {
+  outline: none;
+}
+
+/* 防止文本选择（提升体验） */
+.viewer-header,
+.navigation-hints {
+  user-select: none;
+}
+
+/* 平滑滚动 */
+.text-container,
+.text-panel {
+  scroll-behavior: smooth;
+}
+
+/* 自定义滚动条 */
+.text-container::-webkit-scrollbar,
+.text-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.text-container::-webkit-scrollbar-track,
+.text-panel::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+.text-container::-webkit-scrollbar-thumb,
+.text-panel::-webkit-scrollbar-thumb {
+  background: #444444;
+  border-radius: 4px;
+}
+
+.text-container::-webkit-scrollbar-thumb:hover,
+.text-panel::-webkit-scrollbar-thumb:hover {
+  background: #666666;
+}

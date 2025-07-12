@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './PageItem.css';
-// import { safeLog } from '../utils/logger';
+import { safeLog } from '../utils/logger';
 
 const PageItem = ({ 
   page, 
@@ -13,7 +13,7 @@ const PageItem = ({
   onImageClick,
   isGenerating 
 }) => {
-  // const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState(page.imagePrompt || '');
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
@@ -48,6 +48,7 @@ const PageItem = ({
   const handleExpandClick = () => {
     if (!isExpanded) {
       // Expanding: enter edit mode
+      setIsEditingPrompt(true);
       setIsExpanded(true);
     } else {
       // Collapsing: is like a cancel action
@@ -57,6 +58,7 @@ const PageItem = ({
 
   const handleCancelEdit = () => {
     setEditedPrompt(page.imagePrompt || ''); // Revert changes
+    setIsEditingPrompt(false);
     setIsExpanded(false); // Collapse the section
   };
 
@@ -70,6 +72,7 @@ const PageItem = ({
     onRegenerateImage(index, finalPrompt);
     
     // Collapse the section after triggering
+    setIsEditingPrompt(false);
     setIsExpanded(false);
   };
 
@@ -135,6 +138,317 @@ const PageItem = ({
     if (onImageClick) {
       onImageClick();
     }
+
+    // 获取原始图片文件名，避免格式转换
+    const getOriginalFileName = (url) => {
+      try {
+        const urlObj = new URL(url);
+        const pathname = urlObj.pathname;
+        const fileName = pathname.split('/').pop();
+        
+        // 如果能获取到文件名，使用原始文件名
+        if (fileName && fileName.includes('.')) {
+          const baseName = fileName.split('.')[0];
+          const extension = fileName.split('.').pop().toLowerCase();
+          return `Page_${index + 1}_${baseName}.${extension}`;
+        }
+        
+        // 否则根据URL推断格式
+        if (url.includes('webp')) return `Page_${index + 1}_Illustration.webp`;
+        if (url.includes('jpeg') || url.includes('jpg')) return `Page_${index + 1}_Illustration.jpg`;
+        if (url.includes('png')) return `Page_${index + 1}_Illustration.png`;
+        
+        return `Page_${index + 1}_Illustration.png`;
+      } catch (error) {
+        return `Page_${index + 1}_Illustration.png`;
+      }
+    };
+
+    const originalFileName = getOriginalFileName(page.image);
+    const pageTitle = page.title ? `${index + 1}. ${page.title}` : `Page ${index + 1}`;
+
+    // 计算窗口尺寸
+    const screenWidth = window.screen.availWidth;
+    const screenHeight = window.screen.availHeight;
+    const windowWidth = Math.min(screenWidth * 0.9, 1200);
+    const windowHeight = Math.min(screenHeight * 0.9, 800);
+    const left = (screenWidth - windowWidth) / 2;
+    const top = (screenHeight - windowHeight) / 2;
+
+    // 打开新窗口
+    const newWindow = window.open('', '_blank', 
+      `width=${Math.round(windowWidth)},height=${Math.round(windowHeight)},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=no,menubar=no,toolbar=no,status=no`
+    );
+    
+    if (!newWindow) {
+      safeLog.warn('Failed to open popup window - popup may be blocked');
+      return;
+    }
+
+    // 使用已缓存的图片数据，避免重新下载
+    const createImageViewer = () => {
+      const currentImg = imageRef.current;
+      let imageDataUrl = null;
+      let useOriginalUrl = true;
+      
+      // 尝试从已加载的图片创建DataURL，避免网络请求
+      if (currentImg && currentImg.complete && currentImg.naturalWidth > 0) {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = currentImg.naturalWidth;
+          canvas.height = currentImg.naturalHeight;
+          ctx.drawImage(currentImg, 0, 0);
+          
+          // 尝试保持原始格式
+          let mimeType = 'image/png';
+          if (page.image.includes('.jpg') || page.image.includes('.jpeg')) {
+            mimeType = 'image/jpeg';
+          } else if (page.image.includes('.webp')) {
+            // 检查浏览器是否支持WebP
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = testCanvas.height = 1;
+            if (testCanvas.toDataURL('image/webp').startsWith('data:image/webp')) {
+              mimeType = 'image/webp';
+            }
+          }
+          
+          imageDataUrl = canvas.toDataURL(mimeType, 0.95);
+          useOriginalUrl = false;
+          console.log('Using cached image data for display and download');
+        } catch (error) {
+          console.log('Canvas failed, using original URL:', error);
+          useOriginalUrl = true;
+        }
+      }
+      
+      const displayUrl = imageDataUrl || page.image;
+      const downloadUrl = imageDataUrl || page.image;
+      
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${pageTitle}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body { 
+              height: 100%; 
+              background: #f5f5f5; 
+              overflow: auto;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+            .container { 
+              min-height: 100vh;
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+              padding: 20px;
+              position: relative;
+            }
+            .image-wrapper {
+              position: relative;
+              max-width: 100%;
+              max-height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .image { 
+              max-width: 100%; 
+              max-height: calc(100vh - 120px);
+              height: auto;
+              width: auto;
+              cursor: zoom-in;
+              border-radius: 8px;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+              transition: transform 0.3s ease;
+            }
+            .image.zoomed {
+              cursor: zoom-out;
+              transform: scale(1.5);
+              max-width: none;
+              max-height: none;
+            }
+            .controls { 
+              position: fixed; 
+              top: 20px; 
+              right: 20px; 
+              display: flex; 
+              gap: 10px; 
+              z-index: 1000; 
+            }
+            .btn { 
+              padding: 10px 16px; 
+              border: none; 
+              border-radius: 6px; 
+              cursor: pointer; 
+              font-size: 14px; 
+              font-weight: 500;
+              background: #007AFF; 
+              color: white; 
+              transition: all 0.2s ease;
+              box-shadow: 0 2px 10px rgba(0,122,255,0.3);
+            }
+            .btn:hover { 
+              background: #0056b3; 
+              transform: translateY(-1px);
+            }
+            .btn.secondary {
+              background: #6c757d;
+            }
+            .btn.secondary:hover {
+              background: #545b62;
+            }
+            .title {
+              position: fixed;
+              top: 20px;
+              left: 20px;
+              background: rgba(0,0,0,0.7);
+              color: white;
+              padding: 8px 12px;
+              border-radius: 4px;
+              font-size: 14px;
+              z-index: 1000;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="title">${pageTitle}</div>
+          <div class="controls">
+            <button class="btn" onclick="saveImage()">Save</button>
+            <button class="btn secondary" onclick="closeWindow()">Close</button>
+          </div>
+          <div class="container">
+            <div class="image-wrapper">
+              <img id="mainImage" src="${displayUrl}" class="image" alt="${pageTitle}" ondblclick="toggleZoom()" />
+            </div>
+          </div>
+          <script>
+            const downloadUrl = '${downloadUrl}';
+            const fileName = '${originalFileName}';
+            const isDataUrl = '${!useOriginalUrl}' === 'true';
+            
+            let isZoomed = false;
+            
+            function toggleZoom() {
+              const img = document.getElementById('mainImage');
+              isZoomed = !isZoomed;
+              if (isZoomed) {
+                img.classList.add('zoomed');
+              } else {
+                img.classList.remove('zoomed');
+              }
+            }
+            
+            function saveImage() {
+              console.log('Saving image:', fileName, 'Using data URL:', isDataUrl);
+              
+              if (isDataUrl && downloadUrl.startsWith('data:')) {
+                // 使用DataURL下载，避免跨域问题
+                try {
+                  const link = document.createElement('a');
+                  link.href = downloadUrl;
+                  link.download = fileName;
+                  link.style.display = 'none';
+                  
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  
+                  console.log('Download triggered successfully using DataURL');
+                } catch (error) {
+                  console.error('DataURL download failed:', error);
+                  fallbackDownload();
+                }
+              } else {
+                // 跨域URL，使用fetch + blob下载
+                fetchAndDownload();
+              }
+            }
+            
+            function fetchAndDownload() {
+              console.log('Attempting fetch download for cross-origin image');
+              
+              fetch(downloadUrl, {
+                mode: 'cors',
+                credentials: 'omit'
+              })
+              .then(response => {
+                if (!response.ok) {
+                  throw new Error('Network response was not ok');
+                }
+                return response.blob();
+              })
+              .then(blob => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // 清理blob URL
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                console.log('Download completed via fetch + blob');
+              })
+              .catch(error => {
+                console.error('Fetch download failed:', error);
+                fallbackDownload();
+              });
+            }
+            
+            function fallbackDownload() {
+              console.log('Using fallback download method');
+              
+              // 方法1: 尝试在新标签页中打开并提示用户手动保存
+              const downloadLink = document.createElement('a');
+              downloadLink.href = downloadUrl;
+              downloadLink.target = '_blank';
+              downloadLink.rel = 'noopener noreferrer';
+              
+              // 尝试强制下载
+              downloadLink.download = fileName;
+              
+              document.body.appendChild(downloadLink);
+              downloadLink.click();
+              document.body.removeChild(downloadLink);
+              
+              // 给用户提示
+              setTimeout(() => {
+                alert('If download did not start automatically, please:\\n\\n1. Right-click on the image\\n2. Select "Save image as..."\\n3. Choose your desired location');
+              }, 1000);
+            }
+            
+            function closeWindow() {
+              window.close();
+            }
+            
+            // 键盘快捷键
+            document.addEventListener('keydown', function(e) {
+              if (e.key === 'Escape') {
+                closeWindow();
+              } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveImage();
+              }
+            });
+          </script>
+        </body>
+        </html>
+      `);
+    };
+    
+    createImageViewer();
+    
+    newWindow.document.close();
+    
+    // 聚焦到新窗口
+    newWindow.focus();
   };
 
   const handleImageLoadError = () => {

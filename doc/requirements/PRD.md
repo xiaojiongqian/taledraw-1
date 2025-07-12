@@ -43,7 +43,11 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 - **提示词编辑**：用户可编辑和优化图像生成提示词
 - **模型选择器**：在宽高比选择器旁增加模型下拉菜单，允许用户在 `Imagen4-fast` (默认), `Imagen4`, `Imagen3` 之间切换
 - **状态管理**：生成中、成功、失败状态可视化
-- **图像查看**：支持全屏查看和下载功能
+- **图像查看**：
+  - 全屏查看模式：自适应布局展示图片和文本
+  - 智能布局：横向图片采用上中下布局（标题-图片-文本），纵向图片采用左右布局（左侧文本-右侧图片）
+  - 键盘导航：支持左右方向键翻页浏览
+  - 性能优化：使用本地缓存数据，避免重复下载
 
 ### 5. 导出与保存 ✅
 - **多格式导出**：
@@ -82,8 +86,7 @@ Tale Draw 是一个基于 React 的 AI 驱动的故事绘本生成器，使用 G
 云函数服务：
 ├── generateTaleStream (流式故事结构生成)
 ├── getTaleData (获取故事数据)
-├── generateImage (Imagen 3图像生成)
-├── generateImageV4 (Imagen 4图像生成)
+├── generateImage (Imagen 3/4图像生成)
 ├── config.js (统一配置管理)
 └── healthCheck (健康检查)
 ```
@@ -156,7 +159,6 @@ Cloud Storage/Firestore → 前端展示 → Imagen生成 → Firebase Storage �
 - **支持的AI模型**：
   - Gemini 2.5-flash (故事分析)
   - Imagen 3.0-generate-002 (图像生成)
-  - Imagen 4.0-generate-preview-06-06 (高质量图像生成)
 - **部署平台**：Firebase (Functions + Storage + Auth)
 - **前端框架**：React 19 with Create React App
 

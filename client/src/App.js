@@ -7,6 +7,7 @@ import PageSelector from './components/PageSelector';
 import AspectRatioSelector from './components/AspectRatioSelector';
 import ImagenModelSelector from './components/ImagenModelSelector';
 import PageItem from './components/PageItem';
+import ImageViewer from './components/ImageViewer';
 import CheckoutButton from './components/CheckoutButton';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -51,7 +52,9 @@ function App() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState('');
   const [hasRestoredState, setHasRestoredState] = useState(false);
-
+  // Image viewer state
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [imageViewerPageIndex, setImageViewerPageIndex] = useState(0);
 
 
   useEffect(() => {
@@ -828,6 +831,17 @@ function App() {
     setTimeout(() => {
       saveCurrentState();
     }, 100);
+  };
+  
+  // Handle opening image viewer
+  const handleOpenImageViewer = (pageIndex) => {
+    setImageViewerPageIndex(pageIndex);
+    setImageViewerOpen(true);
+  };
+
+  // Handle closing image viewer
+  const handleCloseImageViewer = () => {
+    setImageViewerOpen(false);
   };
 
   // Start editing title
@@ -1901,6 +1915,7 @@ function App() {
                   onUpdatePrompt={updatePagePrompt}
                   onUpdateText={updatePageText}
                   onUpdateTitle={updatePageTitle}
+                  onImageClick={() => handleOpenImageViewer(index)}
                   isGenerating={loading && progress.includes(`${index + 1}`)}
                 />
               ))}
@@ -1918,6 +1933,15 @@ function App() {
       <footer className="App-footer">
         <p>Powered by Taledraw Team, Version {appVersion}</p>
       </footer>
+      
+      {/* Image Viewer Modal */}
+      <ImageViewer
+        isOpen={imageViewerOpen}
+        onClose={handleCloseImageViewer}
+        pages={pages}
+        initialPageIndex={imageViewerPageIndex}
+        aspectRatio={aspectRatio}
+      />
     </div>
   );
 }
