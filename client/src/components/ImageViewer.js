@@ -15,6 +15,16 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
   // 获取当前页面数据
   const currentPage = pages[currentPageIndex] || {};
   const { image, imagePrompt, text, pageNumber, title } = currentPage;
+  
+  // 当图片URL改变时，检查缓存
+  useEffect(() => {
+    if (image && imageCache.current.has(image)) {
+      console.log('使用缓存图片:', image);
+      setCachedImageSrc(image);
+    } else {
+      setCachedImageSrc(image);
+    }
+  }, [image]);
 
   // 判断是否为横向布局
   const isLandscape = useCallback(() => {
@@ -32,27 +42,78 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
     setCurrentPageIndex(prev => prev < pages.length - 1 ? prev + 1 : prev);
   }, [pages.length]);
 
-  // 预加载相邻页面的图片
+  // 图片缓存管理
+  const imageCache = useRef(new Map());
+  const [cachedImageSrc, setCachedImageSrc] = useState(null);
+  
+  // 智能预加载图片（带缓存检查）
+  const preloadImage = useCallback((url) => {
+    if (!url || imageCache.current.has(url)) {
+      console.log('图片已缓存，跳过预加载:', url);
+      return Promise.resolve();
+    }
+    
+    console.log('开始预加载图片:', url);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        imageCache.current.set(url, img);
+        console.log('图片预加载成功:', url);
+        // 清理过多的缓存（保持最近20张图片）
+        if (imageCache.current.size > 20) {
+          const firstKey = imageCache.current.keys().next().value;
+          imageCache.current.delete(firstKey);
+        }
+        resolve();
+      };
+      img.onerror = () => {
+        console.warn('图片预加载失败:', url);
+        resolve();
+      };
+      img.src = url;
+    });
+  }, []);
+
+  // 立即预加载所有图片（不管查看器是否打开）
+  useEffect(() => {
+    if (!pages.length) return;
+
+    // 优先预加载当前页和相邻页面
+    const priorityPages = [
+      currentPageIndex,
+      currentPageIndex - 1,
+      currentPageIndex + 1
+    ].filter(index => index >= 0 && index < pages.length);
+
+    // 立即预加载优先页面
+    priorityPages.forEach(index => {
+      if (pages[index]?.image) {
+        preloadImage(pages[index].image);
+      }
+    });
+
+    // 延迟预加载其他页面（避免阻塞）
+    setTimeout(() => {
+      pages.forEach((page, index) => {
+        if (page?.image && !priorityPages.includes(index)) {
+          preloadImage(page.image);
+        }
+      });
+    }, 500);
+  }, [pages, currentPageIndex, preloadImage]);
+
+  // 当页面切换时，立即预加载新的相邻页面
   useEffect(() => {
     if (!isOpen || !pages.length) return;
 
-    // 预加载前后页面的图片
-    const preloadImage = (url) => {
-      if (url) {
-        const img = new Image();
-        img.src = url;
+    // 预加载新的相邻页面
+    const adjacentIndices = [currentPageIndex - 1, currentPageIndex + 1];
+    adjacentIndices.forEach(index => {
+      if (index >= 0 && index < pages.length && pages[index]?.image) {
+        preloadImage(pages[index].image);
       }
-    };
-
-    // 预加载前一页
-    if (currentPageIndex > 0 && pages[currentPageIndex - 1]?.image) {
-      preloadImage(pages[currentPageIndex - 1].image);
-    }
-    // 预加载后一页
-    if (currentPageIndex < pages.length - 1 && pages[currentPageIndex + 1]?.image) {
-      preloadImage(pages[currentPageIndex + 1].image);
-    }
-  }, [currentPageIndex, pages, isOpen]);
+    });
+  }, [currentPageIndex, isOpen, pages, preloadImage]);
 
   // 处理键盘事件
   useEffect(() => {
@@ -67,7 +128,18 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
           navigateToNextPage();
           break;
         case 'Escape':
-          onClose();
+          // 如果在全屏模式，先退出全屏再关闭
+          if (document.fullscreenElement) {
+            document.exitFullscreen().then(() => {
+              setIsFullscreen(false);
+              onClose();
+            }).catch(err => {
+              console.error('Error exiting fullscreen:', err);
+              onClose(); // 即使退出全屏失败也要关闭
+            });
+          } else {
+            onClose();
+          }
           break;
         default:
           break;
@@ -89,6 +161,12 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
   // 处理背景点击关闭
   const handleOverlayClick = useCallback((e) => {
     if (e.target === e.currentTarget) {
+      // 如果在全屏模式，先退出全屏
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(err => {
+          console.error('Error exiting fullscreen:', err);
+        });
+      }
       onClose();
     }
   }, [onClose]);
@@ -126,6 +204,20 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
+
+  // 打开时自动进入全屏
+  useEffect(() => {
+    if (isOpen && containerRef.current && !document.fullscreenElement) {
+      // 延迟一点以确保DOM完全渲染
+      setTimeout(() => {
+        containerRef.current.requestFullscreen().then(() => {
+          setIsFullscreen(true);
+        }).catch(err => {
+          console.error('Error attempting to enable fullscreen:', err);
+        });
+      }, 100);
+    }
+  }, [isOpen]);
 
   // 处理鼠标移动和自动隐藏关闭按钮
   useEffect(() => {
@@ -226,7 +318,6 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
       <div 
         className="image-viewer-container" 
         ref={containerRef} 
-        onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -235,7 +326,15 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
           <h2 className="page-title">{pageTitle}</h2>
           <button 
             className={`close-button ${showCloseButton ? 'show' : ''}`}
-            onClick={onClose}
+            onClick={() => {
+              // 如果在全屏模式，先退出全屏
+              if (document.fullscreenElement) {
+                document.exitFullscreen().catch(err => {
+                  console.error('Error exiting fullscreen:', err);
+                });
+              }
+              onClose();
+            }}
             title="关闭 (ESC)"
           >
             ×
@@ -264,89 +363,93 @@ function ImageViewer({ isOpen, onClose, pages, initialPageIndex = 0, aspectRatio
 
         {/* 内容区域 */}
         <div className={`viewer-content ${isLandscape() ? 'landscape' : 'portrait'}`}>
-          {isLandscape() ? (
-            // 横向布局：上中下结构
-            <>
-              <div className="image-container">
-                {!image ? (
-                  <div className="no-image">
-                    <p>暂无图片</p>
-                    <p className="image-prompt">{imagePrompt || '等待生成图片'}</p>
-                  </div>
-                ) : (
-                  <div className="image-wrapper">
-                    {imageLoadingStates[currentPageIndex] === 'loading' && (
-                      <div className="image-loading">
-                        <div className="loading-spinner"></div>
-                        <p>图片加载中...</p>
-                      </div>
-                    )}
-                    <img
-                      src={image}
-                      alt={pageTitle}
-                      loading="lazy"
-                      onLoadStart={() => handleImageLoadStart(currentPageIndex)}
-                      onLoad={() => handleImageLoad(currentPageIndex)}
-                      onError={() => handleImageError(currentPageIndex)}
-                      style={{ 
-                        opacity: imageLoadingStates[currentPageIndex] === 'loaded' ? 1 : 0.3 
-                      }}
-                    />
-                    {imageLoadingStates[currentPageIndex] === 'error' && (
-                      <div className="image-error">
-                        <p>图片加载失败</p>
-                        <p className="image-prompt">{imagePrompt || '请重试'}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="text-container">
-                <p className="story-text">{text || '暂无文本'}</p>
-              </div>
-            </>
-          ) : (
-            // 纵向布局：左右结构
-            <>
-              <div className="text-panel">
-                <p className="story-text">{text || '暂无文本'}</p>
-              </div>
-              <div className="image-panel">
-                {!image ? (
-                  <div className="no-image">
-                    <p>暂无图片</p>
-                    <p className="image-prompt">{imagePrompt || '等待生成图片'}</p>
-                  </div>
-                ) : (
-                  <div className="image-wrapper">
-                    {imageLoadingStates[currentPageIndex] === 'loading' && (
-                      <div className="image-loading">
-                        <div className="loading-spinner"></div>
-                        <p>图片加载中...</p>
-                      </div>
-                    )}
-                    <img
-                      src={image}
-                      alt={pageTitle}
-                      loading="lazy"
-                      onLoadStart={() => handleImageLoadStart(currentPageIndex)}
-                      onLoad={() => handleImageLoad(currentPageIndex)}
-                      onError={() => handleImageError(currentPageIndex)}
-                      style={{ 
-                        opacity: imageLoadingStates[currentPageIndex] === 'loaded' ? 1 : 0.3 
-                      }}
-                    />
-                    {imageLoadingStates[currentPageIndex] === 'error' && (
-                      <div className="image-error">
-                        <p>图片加载失败</p>
-                        <p className="image-prompt">{imagePrompt || '请重试'}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          <div className="content-container">
+            {isLandscape() ? (
+              // 横向布局：紧密的纵向排列
+              <>
+                <div className="image-container">
+                  {!image ? (
+                    <div className="no-image">
+                      <p>暂无图片</p>
+                      <p className="image-prompt">{imagePrompt || '等待生成图片'}</p>
+                    </div>
+                  ) : (
+                    <div className="image-wrapper">
+                      {imageLoadingStates[currentPageIndex] === 'loading' && (
+                        <div className="image-loading">
+                          <div className="loading-spinner"></div>
+                          <p>图片加载中...</p>
+                        </div>
+                      )}
+                      <img
+                        src={cachedImageSrc || image}
+                        alt={pageTitle}
+                        loading="eager"
+                        decoding="sync"
+                        onLoadStart={() => handleImageLoadStart(currentPageIndex)}
+                        onLoad={() => handleImageLoad(currentPageIndex)}
+                        onError={() => handleImageError(currentPageIndex)}
+                        style={{ 
+                          opacity: imageLoadingStates[currentPageIndex] === 'loaded' ? 1 : 0.3 
+                        }}
+                      />
+                      {imageLoadingStates[currentPageIndex] === 'error' && (
+                        <div className="image-error">
+                          <p>图片加载失败</p>
+                          <p className="image-prompt">{imagePrompt || '请重试'}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-container">
+                  <p className="story-text">{text || '暂无文本'}</p>
+                </div>
+              </>
+            ) : (
+              // 纵向布局：紧密的并排布局
+              <>
+                <div className="text-panel">
+                  <p className="story-text">{text || '暂无文本'}</p>
+                </div>
+                <div className="image-panel">
+                  {!image ? (
+                    <div className="no-image">
+                      <p>暂无图片</p>
+                      <p className="image-prompt">{imagePrompt || '等待生成图片'}</p>
+                    </div>
+                  ) : (
+                    <div className="image-wrapper">
+                      {imageLoadingStates[currentPageIndex] === 'loading' && (
+                        <div className="image-loading">
+                          <div className="loading-spinner"></div>
+                          <p>图片加载中...</p>
+                        </div>
+                      )}
+                      <img
+                        src={cachedImageSrc || image}
+                        alt={pageTitle}
+                        loading="eager"
+                        decoding="sync"
+                        onLoadStart={() => handleImageLoadStart(currentPageIndex)}
+                        onLoad={() => handleImageLoad(currentPageIndex)}
+                        onError={() => handleImageError(currentPageIndex)}
+                        style={{ 
+                          opacity: imageLoadingStates[currentPageIndex] === 'loaded' ? 1 : 0.3 
+                        }}
+                      />
+                      {imageLoadingStates[currentPageIndex] === 'error' && (
+                        <div className="image-error">
+                          <p>图片加载失败</p>
+                          <p className="image-prompt">{imagePrompt || '请重试'}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
       </div>

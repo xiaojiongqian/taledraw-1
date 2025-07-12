@@ -942,7 +942,9 @@ exports.generateImage = onCall({
   // 将用户友好的比例转换为Imagen API支持的格式
   const aspectRatioMapping = {
     '16:9': '16:9',
-    '9:16': '9:16'
+    '9:16': '9:16',
+    '4:3': '4:3',
+    '3:4': '3:4'
   };
   
   const imagenAspectRatio = aspectRatioMapping[aspectRatio] || '1:1';
@@ -1498,9 +1500,16 @@ exports.generateTaleStream = onRequest(
         }
 
         // 验证请求体
-        const { story, pageCount = 10 } = request.body;
+        const { story, pageCount } = request.body;
         if (!story || !story.trim()) {
           response.status(400).json({ error: 'Story content is required' });
+          return;
+        }
+        
+        // 验证页数参数
+        if (!pageCount || typeof pageCount !== 'number' || pageCount < 1 || pageCount > 30) {
+          functionsLog.warn('Invalid pageCount:', { pageCount, type: typeof pageCount });
+          response.status(400).json({ error: 'Valid page count (1-30) is required' });
           return;
         }
 

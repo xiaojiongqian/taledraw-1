@@ -15,6 +15,7 @@ import PptxGenJS from 'pptxgenjs';
 import stateManager from './stateManager';
 import { safeLog } from './utils/logger';
 import { useNavigate } from 'react-router-dom';
+import { generateHTMLImageViewer, generateImageViewerCSS } from './components/HTMLImageViewer';
 
 function App() {
   const navigate = useNavigate();
@@ -1308,6 +1309,31 @@ function App() {
       const embeddedImages = pagesWithBase64.filter(page => page.isEmbedded).length;
       const linkedImages = pagesWithBase64.filter(page => page.base64Image && !page.isEmbedded).length;
       
+      // 将字符串宽高比转换为数值
+      const convertAspectRatioToNumber = (ratio) => {
+        if (typeof ratio === 'number') return ratio;
+        if (typeof ratio === 'string' && ratio.includes(':')) {
+          const [width, height] = ratio.split(':').map(Number);
+          return width / height;
+        }
+        return parseFloat(ratio) || 1.0;
+      };
+      
+      const numericAspectRatio = convertAspectRatioToNumber(aspectRatio);
+      
+      // 准备图像查看器数据
+      const pagesData = pagesWithBase64.map((page, index) => ({
+        index,
+        title: page.title || '',
+        content: page.text || '',
+        imageSrc: page.base64Image || '',
+        aspectRatio: numericAspectRatio // 使用转换后的数值宽高比
+      }));
+      
+      // 生成图像查看器JavaScript代码
+      const imageViewerJS = generateHTMLImageViewer(pagesData, numericAspectRatio);
+      const imageViewerCSS = generateImageViewerCSS();
+      
       htmlContent = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1321,7 +1347,9 @@ function App() {
     .page { margin-bottom: 40px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; page-break-inside: avoid; }
     .page img { max-width: 100%; height: auto; display: block; margin: 0 auto 15px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     .page p { text-align: justify; font-size: 1.1em; white-space: pre-wrap; }
-            .missing-image { text-align: center; color: var(--gray-color); font-style: italic; background: var(--gray-color-light); padding: 20px; border-radius: 4px; margin: 0 auto 15px; }
+    .missing-image { text-align: center; color: #999; font-style: italic; background: #f5f5f5; padding: 20px; border-radius: 4px; margin: 0 auto 15px; }
+    /* 图像查看器样式 */
+    ${imageViewerCSS}
     @media print {
       body { padding: 0; background-color: #fff; }
       .container { box-shadow: none; border: none; padding: 0; }
@@ -1335,13 +1363,22 @@ function App() {
       <div class="page">
         <h2>${page.title ? `${index + 1}. ${cleanText(page.title)}` : `${index + 1}.`}</h2>
         ${page.base64Image ? 
-          `<img src="${page.base64Image}" alt="Page ${index + 1} illustration" loading="lazy">` : 
+          `<img src="${page.base64Image}" alt="Page ${index + 1} illustration" loading="lazy" class="page-image" data-page-index="${index}">` : 
           `<div class="missing-image">Image not available</div>`
         }
         <p>${cleanText(page.text)}</p>
       </div>
     `).join('')}
   </div>
+
+  <script>
+    // 页面数据
+    window.pagesData = ${JSON.stringify(pagesData)};
+    window.aspectRatio = ${numericAspectRatio};
+    
+    // 图像查看器代码
+    ${imageViewerJS}
+  </script>
 </body>
 </html>`;
 

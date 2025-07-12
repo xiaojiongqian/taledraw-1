@@ -6,7 +6,15 @@
       "Bash(true)",
       "Bash(grep:*)",
       "Bash(cp:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(open src/demo/html-image-viewer-demo.html)",
+      "Bash(open /Users/vik.qian/study/taledraw/debug/fixed-image-viewer-test.html)",
+      "Bash(npm run build:*)",
+      "Bash(open:*)",
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(npm run:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }
