@@ -8,6 +8,7 @@ const mockPages = [
   {
     id: 'page1',
     pageNumber: 1,
+    title: 'Chapter 1',
     text: 'This is page 1 content',
     image: 'https://example.com/image1.jpg',
     imagePrompt: 'A beautiful landscape'
@@ -15,6 +16,7 @@ const mockPages = [
   {
     id: 'page2',
     pageNumber: 2,
+    title: 'Chapter 2',
     text: 'This is page 2 content',
     image: 'https://example.com/image2.jpg',
     imagePrompt: 'A sunny day'
@@ -22,6 +24,7 @@ const mockPages = [
   {
     id: 'page3',
     pageNumber: 3,
+    title: 'Chapter 3',
     text: 'This is page 3 content',
     image: null,
     imagePrompt: 'Waiting for image generation'
@@ -46,7 +49,7 @@ describe('ImageViewer', () => {
       />
     );
 
-    expect(screen.getByText('第1页')).toBeInTheDocument();
+    expect(screen.getByText('1. Chapter 1')).toBeInTheDocument();
     expect(screen.getByText('This is page 1 content')).toBeInTheDocument();
   });
 
@@ -61,7 +64,7 @@ describe('ImageViewer', () => {
       />
     );
 
-    expect(screen.queryByText('第1页')).not.toBeInTheDocument();
+    expect(screen.queryByText('1. Chapter 1')).not.toBeInTheDocument();
   });
 
   test('calls onClose when close button is clicked', () => {
@@ -95,7 +98,7 @@ describe('ImageViewer', () => {
     const nextButton = screen.getByTitle('下一页 (→)');
     fireEvent.click(nextButton);
 
-    expect(screen.getByText('第2页')).toBeInTheDocument();
+    expect(screen.getByText('2. Chapter 2')).toBeInTheDocument();
     expect(screen.getByText('This is page 2 content')).toBeInTheDocument();
   });
 
@@ -113,7 +116,7 @@ describe('ImageViewer', () => {
     const prevButton = screen.getByTitle('上一页 (←)');
     fireEvent.click(prevButton);
 
-    expect(screen.getByText('第1页')).toBeInTheDocument();
+    expect(screen.getByText('1. Chapter 1')).toBeInTheDocument();
     expect(screen.getByText('This is page 1 content')).toBeInTheDocument();
   });
 
@@ -128,15 +131,15 @@ describe('ImageViewer', () => {
       />
     );
 
-    const viewer = screen.getByText('第1页').closest('.image-viewer-overlay');
+    const viewer = document.querySelector('.image-viewer-overlay');
     
     // Test right arrow key
     fireEvent.keyDown(viewer, { key: 'ArrowRight' });
-    expect(screen.getByText('第2页')).toBeInTheDocument();
+    expect(screen.getByText('2. Chapter 2')).toBeInTheDocument();
 
     // Test left arrow key
     fireEvent.keyDown(viewer, { key: 'ArrowLeft' });
-    expect(screen.getByText('第1页')).toBeInTheDocument();
+    expect(screen.getByText('1. Chapter 1')).toBeInTheDocument();
 
     // Test escape key
     fireEvent.keyDown(viewer, { key: 'Escape' });
@@ -158,7 +161,7 @@ describe('ImageViewer', () => {
     expect(screen.getByText('Waiting for image generation')).toBeInTheDocument();
   });
 
-  test('shows page indicator', () => {
+  test('shows page title in header', () => {
     render(
       <ImageViewer
         isOpen={true}
@@ -169,21 +172,31 @@ describe('ImageViewer', () => {
       />
     );
 
-    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    expect(screen.getByText('1. Chapter 1')).toBeInTheDocument();
   });
 
-  test('shows fullscreen hint', () => {
+  test('handles pages without title', () => {
+    const pagesWithoutTitle = [
+      {
+        id: 'page1',
+        pageNumber: 1,
+        text: 'This is page 1 content',
+        image: 'https://example.com/image1.jpg',
+        imagePrompt: 'A beautiful landscape'
+      }
+    ];
+
     render(
       <ImageViewer
         isOpen={true}
         onClose={mockOnClose}
-        pages={mockPages}
+        pages={pagesWithoutTitle}
         initialPageIndex={0}
         aspectRatio="1:1"
       />
     );
 
-    expect(screen.getByText('双击进入全屏')).toBeInTheDocument();
+    expect(screen.getByText('1. 暂无标题')).toBeInTheDocument();
   });
 
   test('does not show previous button on first page', () => {

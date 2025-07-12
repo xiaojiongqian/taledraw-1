@@ -40,20 +40,12 @@ describe('PageItem', () => {
     onUpdatePrompt: jest.fn(),
     onUpdateText: jest.fn(),
     onUpdateTitle: jest.fn(),
+    onImageClick: jest.fn(),
     isGenerating: false
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset window.open mock
-    window.open = jest.fn(() => ({
-      document: {
-        write: jest.fn(),
-        close: jest.fn()
-      },
-      focus: jest.fn(),
-      close: jest.fn()
-    }));
   });
 
   describe('Rendering', () => {
@@ -85,7 +77,13 @@ describe('PageItem', () => {
         const pageWithStatus = { ...mockPage, status };
         const { rerender } = render(<PageItem {...defaultProps} page={pageWithStatus} />);
         
-        expect(screen.getByText(text)).toBeInTheDocument();
+        // For error status, check specifically in the status badge
+        if (status === 'error') {
+          const statusBadge = screen.getByText(text, { selector: '.status-badge' });
+          expect(statusBadge).toBeInTheDocument();
+        } else {
+          expect(screen.getByText(text)).toBeInTheDocument();
+        }
         
         // Clean up for next iteration
         rerender(<div />);
@@ -94,25 +92,36 @@ describe('PageItem', () => {
   });
 
   describe('Image Handling', () => {
-    it('should open image viewer when image is clicked', () => {
+    it('should call onImageClick when image is clicked', () => {
       render(<PageItem {...defaultProps} />);
       
       const image = screen.getByRole('img');
       fireEvent.click(image);
       
-      expect(window.open).toHaveBeenCalledWith(
-        '',
-        '_blank',
-        expect.stringContaining('width=')
-      );
+      expect(defaultProps.onImageClick).toHaveBeenCalledTimes(1);
     });
 
-    it('should not open image viewer when image has error', () => {
+    it('should not call onImageClick when image has error', () => {
       const pageWithImageError = { ...mockPage, image: null };
       render(<PageItem {...defaultProps} page={pageWithImageError} />);
       
       // Should show pending state instead of image
       expect(screen.getByText('Waiting to generate')).toBeInTheDocument();
+      expect(defaultProps.onImageClick).not.toHaveBeenCalled();
+    });
+
+    it('should not call onImageClick when image load fails', () => {
+      render(<PageItem {...defaultProps} />);
+      
+      const image = screen.getByRole('img');
+      fireEvent.error(image);
+      
+      // Should show reload button instead of allowing click
+      expect(screen.getByText('Reload Image')).toBeInTheDocument();
+      
+      // Click the image after error - should not trigger onImageClick
+      fireEvent.click(image);
+      expect(defaultProps.onImageClick).not.toHaveBeenCalled();
     });
 
     it('should show regenerate button when image fails', () => {
@@ -343,40 +352,36 @@ describe('PageItem', () => {
   });
 
   describe('Image Viewer Integration', () => {
-    it('should prepare image data for viewer when canvas succeeds', async () => {
-      // Mock a successful image element
-      const mockImageRef = {
-        current: {
-          complete: true,
-          naturalWidth: 100,
-          naturalHeight: 100
-        }
-      };
-      
-      // Mock React.useRef to return our mock
-      jest.spyOn(React, 'useRef').mockReturnValue(mockImageRef);
-      
+    it('should call onImageClick callback when image is clicked', () => {
       render(<PageItem {...defaultProps} />);
       
       const image = screen.getByRole('img');
       fireEvent.click(image);
       
-      expect(window.open).toHaveBeenCalled();
-      
-      // Restore the original useRef
-      React.useRef.mockRestore();
+      expect(defaultProps.onImageClick).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle image viewer creation errors gracefully', () => {
-      window.open = jest.fn(() => null); // Simulate popup blocked
+    it('should not call onImageClick when image is not available', () => {
+      const pageWithoutImage = { ...mockPage, image: null };
+      render(<PageItem {...defaultProps} page={pageWithoutImage} />);
       
+      // Should show pending state, no image to click
+      expect(screen.getByText('Waiting to generate')).toBeInTheDocument();
+      expect(defaultProps.onImageClick).not.toHaveBeenCalled();
+    });
+
+    it('should not call onImageClick when image load error occurs', () => {
       render(<PageItem {...defaultProps} />);
       
       const image = screen.getByRole('img');
-      fireEvent.click(image);
+      fireEvent.error(image);
       
-      // Should not throw error
-      expect(window.open).toHaveBeenCalled();
+      // Image should show error state
+      expect(screen.getByText('Reload Image')).toBeInTheDocument();
+      
+      // Clicking on failed image should not trigger onImageClick
+      fireEvent.click(image);
+      expect(defaultProps.onImageClick).not.toHaveBeenCalled();
     });
   });
 
